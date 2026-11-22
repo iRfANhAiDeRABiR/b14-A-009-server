@@ -185,6 +185,18 @@ export const COLLECTION_INDEX_SPECS = Object.freeze({
       options: { name: "payments_status_idx" },
     },
     {
+      key: { status: 1, paidAt: -1 },
+      options: { name: "payments_status_paid_at_idx" },
+    },
+    {
+      key: { ownerId: 1, status: 1, paidAt: -1 },
+      options: { name: "payments_owner_status_paid_at_idx" },
+    },
+    {
+      key: { status: 1, createdAt: -1 },
+      options: { name: "payments_status_created_at_idx" },
+    },
+    {
       key: { stripeCheckoutSessionId: 1 },
       options: {
         name: "payments_stripe_checkout_session_unique",

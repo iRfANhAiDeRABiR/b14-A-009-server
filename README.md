@@ -366,6 +366,20 @@ Provides platform-wide moderation, editing, audit tracking, and history-safe arc
 
 ---
 
+## Admin & Owner Dashboard Analytics APIs (Commit 14)
+
+Provides database-backed dashboard KPIs, UTC calendar-month trend series, approval breakdowns, and top equipment metrics using MongoDB aggregation pipelines rather than fabricated statistics or in-memory full-table JavaScript scans.
+
+- **Period Filtering & Validation (`?period=3m|6m|12m`):** Defaults to `12m` when omitted and rejects unsupported values or MongoDB query operators with HTTP `400` (`"Invalid reporting period"`). All-time KPI counters (`totalUsers`, `totalEquipment`, `totalBookings`, `pendingApprovals`, `completedRentals`, `totalRevenue`, `totalListedEquipment`, `totalEarnings`) remain invariant across period selections while monthly arrays (`monthlyBookingData`, `monthlyRevenueData`, `monthlyEarningsData`, `monthlyRentalData`) cover strictly the requested UTC calendar-month window with zero-filled gaps.
+- **Currency & Payment Integrity:** Platform `totalRevenue` and Owner `totalEarnings` / `monthlyEarnings` aggregate authoritative `payments` records with `status: "Paid"`, exclude `Pending` / `Failed` / `Refunded` transactions, deduct partial `refundedAmount`, deduplicate repeat payment records per `bookingId` / Stripe transaction ID inside `$group`, and never mix major `amount` with `amountMinor` or invent unconfigured platform commission fees.
+
+| Role & Endpoint | Auth / Role | Query | Returned Metrics & Isolation |
+| --- | --- | --- | --- |
+| `GET /api/admin/analytics` | `verifyToken`, `verifyAdmin` | `?period=3m\|6m\|12m` (default `12m`) | Returns `totalUsers`, `totalEquipment` (excluding soft-archived), `totalBookings`, `pendingApprovals`, `completedRentals`, `totalRevenue`, `monthlyBookings`, `monthlyBookingData`, `monthlyRevenueData`, canonical `equipmentApprovalData`, and safe `recentActivity`. |
+| `GET /api/owner/analytics` | `verifyToken`, `verifyOwner` | `?period=3m\|6m\|12m` (default `12m`) | Derived strictly from verified `req.user.id`: returns `totalListedEquipment`, `completedRentals`, `totalEarnings`, `monthlyEarnings`, `grossBookingVolume`, `equipmentStatusBreakdown`, `monthlyEarningsData`, `monthlyRentalData`, top 5 `equipmentPerformance`, and 5 `recentRentals`. |
+
+---
+
 ## Development, Testing & Production Scripts
 
 ```bash

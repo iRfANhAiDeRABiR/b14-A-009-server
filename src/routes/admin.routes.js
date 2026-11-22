@@ -1,5 +1,12 @@
 import { Router } from "express";
 import {
+  adminAnalyticsController,
+} from "../controllers/adminAnalytics.controller.js";
+import {
+  createAdminAnalyticsController,
+  createAdminAnalyticsRouter,
+} from "./adminAnalytics.routes.js";
+import {
   adminEquipmentController,
   createAdminEquipmentController,
 } from "../controllers/adminEquipment.controller.js";
@@ -21,6 +28,7 @@ export function createAdminRouter({
   controller = adminUserController,
   rentalController = adminRentalController,
   equipmentController = adminEquipmentController,
+  analyticsController = adminAnalyticsController,
 } = {}) {
   const router = Router();
 
@@ -54,9 +62,19 @@ export function createAdminRouter({
       controller: equipmentController,
     })
   );
+  router.use(
+    "/analytics",
+    createAdminAnalyticsRouter({
+      authMiddleware,
+      adminMiddleware,
+      controller: analyticsController,
+    })
+  );
 
   return router;
 }
+
+export { createAdminAnalyticsController };
 
 export {
   createAdminEquipmentController,

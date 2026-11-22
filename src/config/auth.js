@@ -1,7 +1,7 @@
 import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { mongodbAdapter } from "@better-auth/mongo-adapter";
-import { jwt } from "better-auth/plugins";
+import { jwt, oAuthProxy } from "better-auth/plugins";
 
 import { DEFAULT_USER_ROLE } from "../constants/roles.js";
 import {
@@ -160,6 +160,14 @@ export function buildBetterAuthOptions({
       },
 
       plugins: [
+        ...(env.clientUrl && env.clientUrl !== authEnv.baseUrl
+          ? [
+              oAuthProxy({
+                productionURL: authEnv.baseUrl,
+                currentURL: env.clientUrl,
+              }),
+            ]
+          : []),
         jwt({
           jwt: {
             issuer: authEnv.issuer,

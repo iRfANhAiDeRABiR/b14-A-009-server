@@ -1,0 +1,26 @@
+{
+  "name": "gearnest-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GearNest Equipment Rental Platform REST API built with Express.js and JavaScript",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "nodemon --watch src src/server.js",
+    "start": "node src/server.js",
+    "check": "node --check src/server.js && node --check src/app.js && node --check src/config/env.js && node --check src/config/cors.js && node --check src/routes/index.js && node --check src/routes/health.routes.js && node --check src/middleware/notFound.js && node --check src/middleware/errorHandler.js && node --check src/utils/ApiError.js && node --check src/utils/asyncHandler.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}

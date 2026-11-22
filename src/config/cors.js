@@ -37,7 +37,12 @@ export function createCorsOptions(allowedOrigins = env.corsOrigins) {
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Idempotency-Key",
+    ],
     optionsSuccessStatus: 204,
   };
 }

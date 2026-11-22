@@ -32,6 +32,21 @@ export function createPaymentController(service = paymentService) {
         data: statusData,
       });
     }),
+
+    verifySessionStatus: asyncHandler(async (req, res) => {
+      const statusData = await service.verifyAndSyncCheckoutSession({
+        customerId: req.user.id,
+        sessionId: req.params.sessionId,
+      });
+
+      return sendSuccess(res, {
+        statusCode: 200,
+        message: statusData.verified
+          ? "Stripe payment verified and booking confirmed"
+          : "Payment verification checked with Stripe",
+        data: statusData,
+      });
+    }),
   };
 }
 

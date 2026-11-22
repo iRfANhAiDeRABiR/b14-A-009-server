@@ -32,6 +32,13 @@ export function createPaymentRouter({
     controller.getSessionStatus
   );
 
+  router.post(
+    "/session/:sessionId/verify",
+    authMiddleware,
+    renterMiddleware,
+    controller.verifySessionStatus
+  );
+
   return router;
 }
 

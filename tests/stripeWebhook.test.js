@@ -342,6 +342,9 @@ describe("Stripe Webhook Processing, Confirmation & Status API (Commit 11)", () 
     });
 
     const paymentService = createPaymentService({
+      stripeClientGetter: () => fakeStripe,
+      currencyResolver: () => "bdt",
+      finalizationService,
       paymentsCollectionGetter: cols.paymentsCollectionGetter,
       bookingsCollectionGetter: cols.bookingsCollectionGetter,
       bookingIntentsCollectionGetter: cols.bookingIntentsCollectionGetter,
@@ -908,5 +911,34 @@ describe("Stripe Webhook Processing, Confirmation & Status API (Commit 11)", () 
     assert.equal(json.data.currency, "bdt");
     assert.equal(json.data.transactionId, validPiId);
     assert.equal(json.data.verified, true);
+  });
+
+  test("DIRECT STRIPE SESSION RECONCILIATION (POST /api/payments/session/:id/verify) ONLY CONFIRMS PAID SESSIONS", async () => {
+    const tokenA = await signUserJwt(customerAId, USER_ROLES.CUSTOMER);
+
+    // 1. Unpaid in Stripe -> stays false & creates zero bookings
+    stripeStore.sessions.get(validSessionId).payment_status = "unpaid";
+    let res = await fetch(`${statusBaseUrl}/api/payments/session/${validSessionId}/verify`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokenA}` },
+    });
+    let json = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(json.data.verified, false);
+    assert.equal(bookingsDb.length, 0);
+
+    // 2. Paid in Stripe -> verifies directly with Stripe API and finalizes atomically
+    stripeStore.sessions.get(validSessionId).payment_status = "paid";
+    res = await fetch(`${statusBaseUrl}/api/payments/session/${validSessionId}/verify`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokenA}` },
+    });
+    json = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(json.data.verified, true);
+    assert.equal(json.data.paymentStatus, PAYMENT_STATUSES.PAID);
+    assert.equal(json.data.bookingStatus, BOOKING_STATUSES.CONFIRMED);
+    assert.equal(bookingsDb.length, 1);
+    assert.equal(paymentsDb.length, 1);
   });
 });

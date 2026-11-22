@@ -1,24 +1,12 @@
-import { ObjectId } from "mongodb";
-
 import { verifyJwtAccessToken } from "../config/jwks.js";
 import { ALLOWED_USER_ROLES } from "../constants/roles.js";
-import { getUsersCollection } from "../models/collections.js";
+import {
+  buildUserLookupFilter,
+  getUsersCollection,
+  resolveUserIdentifier,
+  SAFE_USER_PROJECTION,
+} from "../models/user.model.js";
 import { AuthErrors } from "../utils/authErrors.js";
-
-const SAFE_USER_PROJECTION = Object.freeze({
-  _id: 1,
-  id: 1,
-  name: 1,
-  email: 1,
-  role: 1,
-  image: 1,
-  banned: 1,
-  banExpires: 1,
-  suspended: 1,
-  disabled: 1,
-  active: 1,
-  status: 1,
-});
 
 function extractBearerToken(authorizationHeader) {
   if (typeof authorizationHeader !== "string") {
@@ -50,16 +38,6 @@ function extractBearerToken(authorizationHeader) {
   return token;
 }
 
-function resolveDatabaseUserId(user) {
-  if (typeof user?.id === "string" && user.id.trim().length > 0) {
-    return user.id.trim();
-  }
-  if (user?._id !== undefined && user?._id !== null) {
-    return String(user._id);
-  }
-  return "";
-}
-
 function isAccountDisabled(user) {
   if (!user || typeof user !== "object") return false;
 
@@ -85,18 +63,6 @@ function isAccountDisabled(user) {
   return false;
 }
 
-async function findCurrentUserBySubject(usersCollection, subject) {
-  const candidates = [{ _id: subject }, { id: subject }];
-  if (ObjectId.isValid(subject) && new ObjectId(subject).toString() === subject) {
-    candidates.unshift({ _id: new ObjectId(subject) });
-  }
-
-  return usersCollection.findOne(
-    { $or: candidates },
-    { projection: SAFE_USER_PROJECTION }
-  );
-}
-
 /**
  * Factory creating the JWT authentication middleware with injectable collaborators for testing.
  * Always verifies cryptographic signatures against JWKS before loading the fresh user record
@@ -116,9 +82,9 @@ export function createVerifyTokenMiddleware({
 
       // STEP 04: Load fresh user & current role directly from MongoDB `users`
       const usersCollection = await usersCollectionGetter();
-      const user = await findCurrentUserBySubject(
-        usersCollection,
-        verifiedPayload.sub.trim()
+      const user = await usersCollection.findOne(
+        buildUserLookupFilter(verifiedPayload.sub),
+        { projection: SAFE_USER_PROJECTION }
       );
 
       if (!user) {
@@ -134,7 +100,7 @@ export function createVerifyTokenMiddleware({
         return next(AuthErrors.invalidRole());
       }
 
-      const actualUserId = resolveDatabaseUserId(user);
+      const actualUserId = resolveUserIdentifier(user);
       if (!actualUserId) {
         return next(AuthErrors.userNotFound());
       }

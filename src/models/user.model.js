@@ -1,23 +1,64 @@
+import { ObjectId } from "mongodb";
 import { DEFAULT_USER_ROLE } from "../constants/roles.js";
 import { getUsersCollection } from "./collections.js";
 import { validateUserProfileInput } from "../validators/userValidator.js";
 
 /**
- * @typedef {import("mongodb").ObjectId | string} UserIdentifier
- *
- * @typedef {Object} UserDocument
- * @property {UserIdentifier} _id - Better Auth / MongoDB primary user identifier
- * @property {string} [id] - String alias mapped by Better Auth when present
- * @property {string} name
- * @property {string} email
- * @property {boolean} emailVerified
- * @property {string|null} image
- * @property {string} [phone]
- * @property {string} [address]
- * @property {"Customer"|"Owner"|"Admin"} role
- * @property {Date} createdAt
- * @property {Date} updatedAt
+ * Explicit safe database projection omitting sensitive credentials or private tokens.
  */
+export const SAFE_USER_PROJECTION = Object.freeze({
+  _id: 1,
+  id: 1,
+  name: 1,
+  email: 1,
+  emailVerified: 1,
+  image: 1,
+  phone: 1,
+  address: 1,
+  role: 1,
+  banned: 1,
+  banExpires: 1,
+  suspended: 1,
+  disabled: 1,
+  active: 1,
+  status: 1,
+  createdAt: 1,
+  updatedAt: 1,
+});
+
+/**
+ * Builds a query filter matching Better Auth user records whether keyed by
+ * MongoDB ObjectId (`_id`) or string identifiers (`_id` / `id`).
+ */
+export function buildUserLookupFilter(identifier) {
+  const cleanId = String(identifier || "").trim();
+  const candidates = [{ _id: cleanId }, { id: cleanId }];
+  if (ObjectId.isValid(cleanId) && new ObjectId(cleanId).toString() === cleanId) {
+    candidates.unshift({ _id: new ObjectId(cleanId) });
+  }
+  return { $or: candidates };
+}
+
+export function resolveUserIdentifier(userDoc) {
+  if (typeof userDoc?.id === "string" && userDoc.id.trim().length > 0) {
+    return userDoc.id.trim();
+  }
+  if (userDoc?._id !== undefined && userDoc?._id !== null) {
+    return String(userDoc._id);
+  }
+  return null;
+}
+
+function resolveAccountStatus(userDoc) {
+  if (userDoc?.banned === true) return "Banned";
+  if (userDoc?.suspended === true) return "Suspended";
+  if (userDoc?.disabled === true) return "Disabled";
+  if (userDoc?.active === false) return "Inactive";
+  if (typeof userDoc?.status === "string" && userDoc.status.trim()) {
+    return userDoc.status.trim();
+  }
+  return undefined;
+}
 
 export { getUsersCollection };
 
@@ -28,10 +69,8 @@ export { getUsersCollection };
 export function sanitizeUserProfile(userDoc) {
   if (!userDoc || typeof userDoc !== "object") return null;
 
-  const resolvedId = userDoc.id ?? (userDoc._id ? String(userDoc._id) : null);
-
   return {
-    id: resolvedId,
+    id: resolveUserIdentifier(userDoc),
     name: userDoc.name || "",
     email: userDoc.email || "",
     emailVerified: Boolean(userDoc.emailVerified),
@@ -41,6 +80,20 @@ export function sanitizeUserProfile(userDoc) {
     role: userDoc.role || DEFAULT_USER_ROLE,
     createdAt: userDoc.createdAt || null,
     updatedAt: userDoc.updatedAt || null,
+  };
+}
+
+/**
+ * Maps a user record to safe administrative fields (including optional account status).
+ */
+export function sanitizeAdminUserProfile(userDoc) {
+  const base = sanitizeUserProfile(userDoc);
+  if (!base) return null;
+
+  const accountStatus = resolveAccountStatus(userDoc);
+  return {
+    ...base,
+    ...(accountStatus ? { accountStatus } : {}),
   };
 }
 

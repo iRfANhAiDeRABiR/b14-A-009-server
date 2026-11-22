@@ -183,6 +183,20 @@ router.get("/owner-data", verifyToken, verifyOwner, controller);
 
 ---
 
+## User Profile & Admin User Governance APIs (Commit 05)
+
+All routes below require a valid Better Auth Bearer token (`Authorization: Bearer <ACCESS_TOKEN>`) verified via `verifyToken`. Administrative endpoints additionally enforce `verifyAdmin` (`role === "Admin"`). Never exposes password hashes, session tokens, or OAuth secrets.
+
+| Method & Endpoint | Middleware | Purpose |
+| --- | --- | --- |
+| `GET /api/users/me` | `verifyToken` | Retrieve authenticated user's profile (`id` sourced from `req.user.id`). |
+| `PATCH /api/users/me` | `verifyToken` | Update allowlisted profile fields (`name`, `image` / `photoURL`, `phone`, `address`). Strictly rejects `role`, `email`, `emailVerified`, `password`, `userId`, or unknown fields (`400`). |
+| `GET /api/admin/users` | `verifyToken`, `verifyAdmin` | Search (`name` / `email` escaped regex), filter (`role`: `all` \| `Customer` \| `Owner` \| `Admin`), sort (`newest`, `oldest`, `name_asc`, `name_desc`), and paginate (`page`, `limit` max `50`) users. |
+| `GET /api/admin/users/:id` | `verifyToken`, `verifyAdmin` | Retrieve safe profile details and optional `accountStatus` for a selected user (`404` when absent). |
+| `PATCH /api/admin/users/:id/role` | `verifyToken`, `verifyAdmin` | Update a user's canonical role (`Customer`, `Owner`, `Admin`). Prevents self-role changes and immediately enforces the new role on subsequent `verifyToken` checks. |
+
+---
+
 ## Development, Testing & Production Scripts
 
 ```bash
@@ -192,7 +206,7 @@ npm run dev
 # Production server start
 npm start
 
-# Run automated JWT & RBAC middleware tests (node:test)
+# Run automated verification test suites (node:test)
 npm test
 
 # Static JavaScript syntax validation across src/ and tests/

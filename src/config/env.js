@@ -86,9 +86,12 @@ export const env = Object.freeze({
   jsonBodyLimit: String(process.env.JSON_BODY_LIMIT || "100kb").trim(),
   mongodbUri: String(process.env.MONGODB_URI || "").trim(),
   dbName: String(process.env.DB_NAME || "").trim(),
+  mongodbTransactions:
+    String(process.env.MONGODB_TRANSACTIONS || "true").trim().toLowerCase() !== "false",
   dbConnectTimeoutMs: Number(process.env.DB_CONNECT_TIMEOUT_MS) || 10000,
   dbServerSelectionTimeoutMs: Number(process.env.DB_SERVER_SELECTION_TIMEOUT_MS) || 5000,
   dbSocketTimeoutMs: Number(process.env.DB_SOCKET_TIMEOUT_MS) || 20000,
+  betterAuthUrl: String(process.env.BETTER_AUTH_URL || "").trim().replace(/\/+$/, ""),
 });
 
 /**

@@ -1,4 +1,5 @@
 import { app } from "./app.js";
+import { getAuthStatusSummary, initAuth, resetAuth } from "./config/auth.js";
 import { closeDB, connectDB } from "./config/db.js";
 import { ensureDatabaseCollectionsAndIndexes } from "./config/dbIndexes.js";
 import { env, redactMongoUri } from "./config/env.js";
@@ -29,6 +30,7 @@ async function shutdown(signal, exitCode = 0) {
       console.log("[GearNest API] HTTP server closed cleanly.");
     }
 
+    resetAuth();
     await closeDB();
     console.log("[GearNest API] MongoDB connection closed cleanly.");
     clearTimeout(forceTimer);
@@ -51,6 +53,14 @@ async function startServer() {
     const indexSummary = await ensureDatabaseCollectionsAndIndexes(db);
     console.log(
       `[GearNest API] Database initialized (${indexSummary.collectionsChecked} collections verified, ${indexSummary.indexesCreated} indexes created, ${indexSummary.indexesSkipped} existing skipped).`
+    );
+
+    initAuth();
+    const authStatus = getAuthStatusSummary();
+    console.log(
+      `[GearNest API] Better Auth ready at ${authStatus.baseUrl}${authStatus.basePath} (Google OAuth: ${
+        authStatus.googleOAuthEnabled ? "configured" : "disabled — missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET"
+      }).`
     );
 
     httpServer = app.listen(env.port, () => {

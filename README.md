@@ -4,8 +4,8 @@
 
 GearNest API powers the backend REST services for **GearNest — Equipment Rental Platform**, connecting equipment owners and customers through an organized marketplace.
 
-- **Implemented in Commit 01–02:** Express.js application bootstrap, environment validation, restricted credentialed CORS, Helmet security headers, Morgan HTTP logging, singleton MongoDB Node.js Driver connection (`connectDB`, `getDB`, `getClient`, `closeDB`), collection architecture (`users`, `equipment`, `bookings`, `favorites`, `payments`, `contactMessages`, `stripeWebhookEvents`), idempotent database index initialization, constants/validators, centralized error handling (including MongoDB duplicate-key/availability errors), liveness (`GET /api/health`), and readiness (`GET /api/health/ready`) endpoints.
-- **Planned in subsequent commits:** Better Auth + JWT verification (Commit 03), role-based authorization middleware (Commit 04), Equipment/Favorites/Booking/Owner/Admin APIs, ImgBB image upload proxying, Stripe Checkout & webhook processing (Commit 10+), and Contact message endpoints.
+- **Implemented in Commit 01–03:** Express.js application bootstrap, environment validation, restricted credentialed CORS, Helmet security headers, Morgan HTTP logging, singleton MongoDB Node.js Driver connection (`connectDB`, `getDB`, `getClient`, `closeDB`), collection architecture, idempotent database index initialization, Better Auth authentication + `@better-auth/mongo-adapter` integration (`users` collection + `sessions`/`accounts`/`verifications`/`jwks`), email/password registration & login with server-side complexity hooks, conditional Google OAuth setup, `jwt()` plugin (`/api/auth/token` & `/api/auth/jwks`), centralized error handling, liveness (`GET /api/health`), and readiness (`GET /api/health/ready`) endpoints.
+- **Planned in subsequent commits:** JWT & RBAC route protection middleware (Commit 04), User role/profile management APIs (Commit 05+), Equipment/Favorites/Booking/Owner/Admin APIs, ImgBB image upload proxying, Stripe Checkout & webhook processing (Commit 10+), and Contact message endpoints.
 
 ---
 
@@ -16,11 +16,11 @@ GearNest API powers the backend REST services for **GearNest — Equipment Renta
 - **Framework:** Express.js (`^5.1.0`)
 - **Language:** JavaScript
 - **Database & Driver:** MongoDB via Official MongoDB Node.js Driver (`^7.x`)
-- **Security & Middleware:** `helmet`, `cors`, `morgan`, `dotenv`
+- **Authentication & Tokens:** Better Auth (`better-auth`, `@better-auth/mongo-adapter`, `better-auth/plugins` `jwt()`)
+- **Security & Middleware:** `helmet`, `cors`, `morgan`, `dotenv`, Better Auth rate limiting
 
 ### Planned Integrations
-- **Authentication & Sessions:** Better Auth + MongoDB Adapter (Commit 03)
-- **Authorization:** JWT verification & role-based middleware (Commits 03–04)
+- **Authorization Middleware:** JWT verification & RBAC middleware (`verifyToken`, role guards — Commit 04)
 - **Payments:** Stripe Checkout & webhook verification (Commit 10)
 - **Media Hosting:** ImgBB API integration
 
@@ -99,6 +99,45 @@ Initialized idempotently on startup via `ensureDatabaseCollectionsAndIndexes()` 
 - **Readiness Endpoint (`GET /api/health/ready`)**:
   - Connected: HTTP `200` `{ "success": true, "message": "GearNest database is ready", "data": { "service": "GearNest API", "database": "connected" } }`
   - Unavailable: HTTP `503` `{ "success": false, "message": "GearNest database is unavailable", "error": null }`
+
+---
+
+## Authentication & Frontend Integration (Better Auth + JWT)
+
+Authentication is powered by Better Auth (`src/config/auth.js`) backed by `@better-auth/mongo-adapter` (`usePlural: true`, sharing the `users` collection cleanly with `sessions`, `accounts`, `verifications`, and `jwks` managed by Better Auth) and the official `jwt()` plugin (`better-auth/plugins`).
+
+- **Express Handler Order:** `/api/auth/*splat` is mounted via `toNodeHandler(auth)` in `src/app.js` **after** `cors(corsOptions)` and **strictly before** `express.json()` so Better Auth receives untouched request streams.
+- **Better Auth Base URL & Path:** Configured from `BETTER_AUTH_URL` (local default: `http://localhost:5000`), mounted at `/api/auth`.
+- **Token Issuer & Audience:** Both `issuer` and `audience` match the configured `BETTER_AUTH_URL`.
+- **Roles & Signup Policy:** User `role` (`Customer`, `Owner`, `Admin`) is configured with `input: false` and enforced unconditionally via `databaseHooks.user.create.before` so every public email signup and Google login starts with `role: "Customer"`. Email verification and password reset flows are disabled per platform requirements.
+- **Password Complexity:** Minimum `6` characters, at least `1` uppercase letter (`A-Z`), and at least `1` lowercase letter (`a-z`), enforced server-side in Better Auth `hooks.before` on `/api/auth/sign-up/email`.
+- **Auth Rate Limiting:** Better Auth rate-limiting protects `/api/auth/sign-in/email`, `/api/auth/sign-up/email`, and `/api/auth/sign-in/social` with sensible brute-force thresholds without blocking normal testing.
+
+### Authentication Endpoints
+
+| Action | Method & Path | Notes |
+| --- | --- | --- |
+| Email Registration | `POST /api/auth/sign-up/email` | Requires `name`, `email`, `password` (>= 6 chars, upper + lower); optional `image` HTTP/HTTPS URL. Always assigns `role: "Customer"`. |
+| Email Login | `POST /api/auth/sign-in/email` | Authenticates user and sets secure session cookie. |
+| Google Social Login | `POST /api/auth/sign-in/social` | Configured when `GOOGLE_CLIENT_ID` & `GOOGLE_CLIENT_SECRET` are set. |
+| Get Active Session | `GET /api/auth/get-session` | Returns authenticated session and user (including `role`). |
+| Logout | `POST /api/auth/sign-out` | Clears active session and cookie. |
+| Mint Signed JWT | `GET /api/auth/token` | Returns a signed JWT (`15m` TTL) for an authenticated session via the Better Auth JWT plugin. |
+| Public Verification Keys | `GET /api/auth/jwks` | Exposes public JWK set (private keys are never exposed). |
+
+### Google OAuth Redirect / Callback URI
+
+Configure the authorized redirect URI in Google Cloud Console as:
+
+- **Development:** `http://localhost:5000/api/auth/callback/google`
+- **Production:** `${BETTER_AUTH_URL}/api/auth/callback/google` (e.g., `https://api.yourdomain.com/api/auth/callback/google`)
+
+### Required Frontend Client Configuration (`better-auth/react`)
+
+- Configure the Next.js Better Auth client (`createAuthClient`) with `baseURL: process.env.NEXT_PUBLIC_API_BASE_URL`, `basePath: "/api/auth"`, `plugins: [jwtClient()]`, and `fetchOptions: { credentials: "include" }`.
+- Ensure the frontend origin is included in `CLIENT_URL` and `CORS_ORIGINS` (exact origin URLs; never combine `"*"` with `credentials: true`).
+- In HTTPS production deployments where frontend and backend use separate hostnames, cross-origin cookies automatically use `SameSite=None; Secure; HttpOnly`; same-site/local setups retain `SameSite=Lax; HttpOnly`.
+- Retrieve JWT bearer tokens strictly via the official Better Auth client (`authClient.token()`), never by signing tokens in client code.
 
 ---
 

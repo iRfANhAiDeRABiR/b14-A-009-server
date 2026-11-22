@@ -3,16 +3,16 @@ import healthRouter from "./health.routes.js";
 
 const apiRouter = Router();
 
-// Implemented routes (Commit 01)
+// Implemented REST modules (Commits 01-03)
+// Note: Better Auth endpoints (/api/auth/*splat) are mounted in src/app.js before express.json().
 apiRouter.use("/health", healthRouter);
 
 /*
  * Planned feature module mounts (upcoming commits):
- * - /api/auth       (Better Auth handler in app.js — Commit 03)
- * - /api/users      (Commit 04+)
- * - /api/equipment  (Commit 05+)
- * - /api/favorites  (Commit 06+)
- * - /api/bookings   (Commit 07+)
+ * - /api/users      (Commit 05+)
+ * - /api/equipment  (Commit 06+)
+ * - /api/favorites  (Commit 07+)
+ * - /api/bookings   (Commit 08+)
  * - /api/payments   (Commit 10+)
  * - /api/owner      (Commit 08+)
  * - /api/admin      (Commit 09+)

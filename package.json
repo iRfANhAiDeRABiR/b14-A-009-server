@@ -11,6 +11,8 @@
     "check": "node -e \"const fs=require('fs'),path=require('path'),cp=require('child_process');const walk=d=>fs.readdirSync(d,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(d,e.name)):e.name.endsWith('.js')?[path.join(d,e.name)]:[]);for(const f of walk('src')){const r=cp.spawnSync(process.execPath,['--check',f],{stdio:'inherit'});if(r.status!==0)process.exit(r.status);}\""
   },
   "dependencies": {
+    "@better-auth/mongo-adapter": "^1.7.27",
+    "better-auth": "^1.7.27",
     "cors": "^2.8.6",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",

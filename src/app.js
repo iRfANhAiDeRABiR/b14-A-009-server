@@ -7,6 +7,7 @@ import { corsOptions } from "./config/cors.js";
 import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { notFound } from "./middleware/notFound.js";
+import { betterAuthHandler } from "./routes/auth.routes.js";
 import apiRouter from "./routes/index.js";
 
 /**
@@ -22,8 +23,12 @@ export function createApp() {
     app.set("trust proxy", 1);
   }
 
-  // Security headers & restricted cross-origin policy
-  app.use(helmet());
+  // 1. Security headers & restricted cross-origin policy
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+    })
+  );
   app.use(cors(corsOptions));
 
   // Structured HTTP request logging (suppressed during automated tests)
@@ -31,11 +36,14 @@ export function createApp() {
     app.use(morgan(env.isProduction ? "combined" : "dev"));
   }
 
-  // Request body parsers with explicit size limits
+  // 2. Better Auth handler MUST precede express.json() so request streams remain intact
+  app.all("/api/auth/*splat", betterAuthHandler);
+
+  // 3. Request body parsers with explicit size limits for Express REST endpoints
   app.use(express.json({ limit: env.jsonBodyLimit }));
   app.use(express.urlencoded({ extended: true, limit: env.jsonBodyLimit }));
 
-  // Root availability endpoint
+  // 4. Root & centralized REST API routes
   app.get("/", (_req, res) => {
     res.status(200).json({
       success: true,
@@ -43,10 +51,9 @@ export function createApp() {
     });
   });
 
-  // Centralized REST API routes
   app.use("/api", apiRouter);
 
-  // Fallthrough 404 & centralized error handling
+  // 5-6. Fallthrough 404 & centralized error handling
   app.use(notFound);
   app.use(errorHandler);
 

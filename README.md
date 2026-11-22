@@ -197,6 +197,26 @@ All routes below require a valid Better Auth Bearer token (`Authorization: Beare
 
 ---
 
+## Equipment Management & Image Upload APIs (Commit 06)
+
+- **Allowed Categories:** `Construction Equipment`, `Photography Equipment`, `Vehicles & Transportation`, `Agriculture Equipment`, `Electronics`, `Event Equipment`
+- **Allowed Rental Types:** `Daily`, `Weekly`, `Monthly`
+- **Approval Statuses:** `Pending` (forced default on Owner creation), `Approved` (eligible for public catalog), `Rejected`
+- **ImgBB Environment Variable:** Configure `IMGBB_API_KEY` solely in `server/.env`; never expose it to the frontend or API responses.
+
+| Method & Endpoint | Access / Middleware | Description |
+| --- | --- | --- |
+| `GET /api/equipment` | Public | Lists `Approved` equipment newest-first with pagination (`page`, `limit` max `50`). Full search/filter/sort expands in Commit 07. |
+| `GET /api/equipment/featured` | Public | Returns up to `6` newest `Approved` items via MongoDB `.limit(safeLimit)` (`limit` query max `6`). |
+| `GET /api/equipment/my` | `verifyToken`, `verifyOwner` | Lists the authenticated Owner's `Pending`, `Approved`, and `Rejected` listings (`page`, `limit`, optional `status`) plus status counts. |
+| `POST /api/equipment` | `verifyToken`, `verifyOwner` | Submits new equipment; validates all 12 fields (`rentalPrice > 0`, integer `availableQuantity >= 1`, HTTP/HTTPS `image`), assigns `ownerId` from `req.user.id`, forces `status: "Pending"`, and rejects spoofed `ownerId`/`status`. |
+| `GET /api/equipment/:id` | `verifyToken` | Returns item details with safe owner fields. Customers and other users view `Approved` items only (`404` otherwise); Owners can inspect their own `Pending`/`Rejected` items. Admin full review is scheduled for Commit 13. |
+| `PATCH /api/equipment/:id` | `verifyToken`, `verifyOwner` | Updates editable fields of equipment owned by `req.user.id` (`403` cross-owner). Rejects attempts to change `ownerId`, `status`, or unknown fields (`400`). |
+| `DELETE /api/equipment/:id` | `verifyToken`, `verifyOwner` | Deletes unbooked equipment owned by `req.user.id` (`403` cross-owner) and removes orphaned favorites. Blocks deletion (`409`) if associated bookings or payments exist. |
+| `POST /api/uploads/equipment-image` | `verifyToken`, `verifyOwner`, `upload` | Accepts `multipart/form-data` (`image`, max `5 MB`, JPG/JPEG/PNG/WEBP verified by MIME, extension, and binary file signature) and proxies upload to ImgBB returning `{ url, deleteUrl }`. |
+
+---
+
 ## Development, Testing & Production Scripts
 
 ```bash

@@ -1,8 +1,8 @@
-import { env } from "../config/env.js";
+import { env, redactMongoUri } from "../config/env.js";
 
 /**
- * Normalizes known transport/parser failures (such as malformed JSON payloads
- * or oversized request bodies) into consistent API error attributes.
+ * Normalizes known transport, parser, and MongoDB errors
+ * into consistent, credential-safe API error attributes.
  */
 function normalizeError(err) {
   if (
@@ -29,6 +29,44 @@ function normalizeError(err) {
     };
   }
 
+  if (err?.code === 11000) {
+    const conflictFields = err?.keyPattern ? Object.keys(err.keyPattern) : [];
+    return {
+      statusCode: 409,
+      message:
+        conflictFields.length > 0
+          ? `A record with this ${conflictFields.join(", ")} already exists.`
+          : "Duplicate record violates unique constraint.",
+      code: "DUPLICATE_KEY",
+      details: conflictFields.length > 0 ? { fields: conflictFields } : null,
+      isOperational: true,
+    };
+  }
+
+  if (err?.code === 18 || err?.code === 8000 || err?.codeName === "AuthenticationFailed") {
+    return {
+      statusCode: 503,
+      message: "Database authentication failed.",
+      code: "DB_AUTH_FAILED",
+      details: null,
+      isOperational: true,
+    };
+  }
+
+  if (
+    err?.name === "MongoServerSelectionError" ||
+    err?.name === "MongoNetworkTimeoutError" ||
+    err?.name === "MongoNetworkError"
+  ) {
+    return {
+      statusCode: 503,
+      message: "Database service is currently unavailable.",
+      code: "DB_UNAVAILABLE",
+      details: null,
+      isOperational: true,
+    };
+  }
+
   const statusCode =
     Number.isInteger(err?.statusCode) && err.statusCode >= 400 && err.statusCode < 600
       ? err.statusCode
@@ -40,7 +78,7 @@ function normalizeError(err) {
     statusCode,
     message:
       typeof err?.message === "string" && err.message.trim()
-        ? err.message.trim()
+        ? redactMongoUri(err.message.trim())
         : "Internal server error",
     code: err?.code || "INTERNAL_ERROR",
     details: err?.details ?? null,
@@ -57,7 +95,8 @@ export function errorHandler(err, req, res, _next) {
   const normalized = normalizeError(err);
 
   if (normalized.statusCode >= 500) {
-    console.error(`[API Error] ${req.method} ${req.originalUrl}:`, err);
+    const safeLogMsg = redactMongoUri(err?.message || "Unexpected error");
+    console.error(`[API Error] ${req.method} ${req.originalUrl}: ${safeLogMsg}`);
   }
 
   const safeMessage =
@@ -70,7 +109,7 @@ export function errorHandler(err, req, res, _next) {
     if (normalized.statusCode >= 500 && err?.stack) {
       errorPayload = {
         code: normalized.code,
-        stack: err.stack,
+        stack: redactMongoUri(err.stack),
       };
     } else if (normalized.details !== null) {
       errorPayload = normalized.details;

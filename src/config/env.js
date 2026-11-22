@@ -86,7 +86,20 @@ export const env = Object.freeze({
   jsonBodyLimit: String(process.env.JSON_BODY_LIMIT || "100kb").trim(),
   mongodbUri: String(process.env.MONGODB_URI || "").trim(),
   dbName: String(process.env.DB_NAME || "").trim(),
+  dbConnectTimeoutMs: Number(process.env.DB_CONNECT_TIMEOUT_MS) || 10000,
+  dbServerSelectionTimeoutMs: Number(process.env.DB_SERVER_SELECTION_TIMEOUT_MS) || 5000,
+  dbSocketTimeoutMs: Number(process.env.DB_SOCKET_TIMEOUT_MS) || 20000,
 });
+
+/**
+ * Strips credentials from MongoDB connection strings before emitting logs or error strings.
+ */
+export function redactMongoUri(text = "") {
+  return String(text).replace(
+    /(mongodb(?:\+srv)?:\/\/)([^/\s@]+)@/gi,
+    "$1***:***@"
+  );
+}
 
 /**
  * Validates required environment keys when a milestone or feature activates them.
@@ -103,4 +116,28 @@ export function requireEnv(keys = []) {
       `Missing required environment variable(s): ${missing.join(", ")}`
     );
   }
+}
+
+/**
+ * Validates MongoDB configuration dynamically when establishing a database connection.
+ */
+export function requireDatabaseEnv() {
+  requireEnv(["MONGODB_URI", "DB_NAME"]);
+
+  const mongodbUri = String(process.env.MONGODB_URI || "").trim();
+  const dbName = String(process.env.DB_NAME || "").trim();
+
+  if (!/^mongodb(?:\+srv)?:\/\/\S+/i.test(mongodbUri)) {
+    throw new Error(
+      "Invalid MONGODB_URI format. Expected a connection string starting with mongodb:// or mongodb+srv://."
+    );
+  }
+
+  return {
+    mongodbUri,
+    dbName,
+    connectTimeoutMs: env.dbConnectTimeoutMs,
+    serverSelectionTimeoutMs: env.dbServerSelectionTimeoutMs,
+    socketTimeoutMs: env.dbSocketTimeoutMs,
+  };
 }

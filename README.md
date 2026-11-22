@@ -323,6 +323,29 @@ Payment confirmation occurs **exclusively** inside verified Stripe webhook proce
 
 ---
 
+## Customer, Owner & Admin Rental Management APIs (Commit 12)
+
+Provides role-isolated finalized rental listing and detail inspection across Customers, Owners, and Admins. **Temporary `bookingIntents` holds never appear** in these endpoints, and multi-attempt `payments` rows are aggregated cleanly as an array selecting the authoritative payment record without duplicating booking rows.
+
+- **Query Capabilities (`rentalQuery.validator.js`):**
+  - **`search`:** Case-insensitive escaped regex across equipment name/category and exact Booking ObjectId (`_id`), plus Customer name on Owner queries and both Customer & Owner names on Admin queries.
+  - **`bookingStatus`:** Exact canonical finalized statuses (`Pending`, `Confirmed`, `Active`, `Completed`, `Cancelled`; `PendingPayment` holds are rejected with `400`).
+  - **`paymentStatus`:** Stored database payment statuses (`Pending`, `Paid`, `Failed`, `Refunded`).
+  - **`sort`:** `newest` (default), `oldest`, `amount_asc`, `amount_desc`, `start_date`, `end_date` with deterministic `_id` secondary tie-breakers.
+  - **`page` / `limit`:** Server-side MongoDB `$skip` & `$limit` inside `$facet` (`page=1`, `limit=10`, max `limit=50`).
+- **Missing Transition Rule Note:** Because GearNest defines no manual Admin rental-status override workflow outside verified Stripe fulfillment and payment safety rules forbid altering payment states manually, `PATCH /api/admin/rentals/:id/status` is intentionally omitted to avoid inventing unverified status transitions.
+
+| Role & Endpoint | Middleware | Additional Filters | Returned Information & Isolation |
+| --- | --- | --- | --- |
+| `GET /api/bookings/my` | `verifyToken`, `verifyRenter` (`Customer`) | `search`, `bookingStatus`, `paymentStatus`, `sort`, `page`, `limit` | Scoped strictly to `req.user.id`; joins equipment + authoritative payment without exposing owner PII. |
+| `GET /api/bookings/:id` | `verifyToken`, `verifyRenter` (`Customer`) | Route param `:id` (`ObjectId`) | Detailed booking, equipment, delivery, and `transactionId`/`paidAt` (`404` across customers). |
+| `GET /api/owner/rentals` | `verifyToken`, `verifyOwner` (`Owner`) | `search`, `bookingStatus`, `paymentStatus`, `equipmentId`, `sort`, `page`, `limit` | Scoped strictly to bookings on equipment owned by `req.user.id`; joins customer (`name`, `email`, `image`), equipment, and KPI `summary`. |
+| `GET /api/owner/rentals/:id` | `verifyToken`, `verifyOwner` (`Owner`) | Route param `:id` (`ObjectId`) | Owner detail view including `contactNumber`, `deliveryAddress`, and `additionalNotes` (`404` cross-owner). |
+| `GET /api/admin/rentals` | `verifyToken`, `verifyAdmin` (`Admin`) | `search`, `bookingStatus`, `paymentStatus`, `equipmentId`, `customerId`, `ownerId`, `sort`, `page`, `limit` | Platform-wide finalized rentals joining Customer, Owner, Equipment, and Payment fields without password hashes or Stripe secrets. |
+| `GET /api/admin/rentals/:id` | `verifyToken`, `verifyAdmin` (`Admin`) | Route param `:id` (`ObjectId`) | Full safe reconciliation details (`stripeCheckoutSessionId`, `paymentIntentId`, `paidAt`, `refundStatus`, `equipment.location`, delivery info). |
+
+---
+
 ## Development, Testing & Production Scripts
 
 ```bash

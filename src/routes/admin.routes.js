@@ -1,5 +1,9 @@
 import { Router } from "express";
 import {
+  adminRentalController,
+  createAdminRentalController,
+} from "../controllers/adminRental.controller.js";
+import {
   adminUserController,
   createAdminUserController,
 } from "../controllers/adminUser.controller.js";
@@ -10,6 +14,7 @@ export function createAdminRouter({
   authMiddleware = verifyToken,
   adminMiddleware = verifyAdmin,
   controller = adminUserController,
+  rentalController = adminRentalController,
 } = {}) {
   const router = Router();
 
@@ -22,9 +27,22 @@ export function createAdminRouter({
     controller.updateUserRole
   );
 
+  router.get(
+    "/rentals",
+    authMiddleware,
+    adminMiddleware,
+    rentalController.listAllRentals
+  );
+  router.get(
+    "/rentals/:id",
+    authMiddleware,
+    adminMiddleware,
+    rentalController.getRentalDetails
+  );
+
   return router;
 }
 
-export { createAdminUserController };
+export { createAdminRentalController, createAdminUserController };
 export const adminRouter = createAdminRouter();
 export default adminRouter;

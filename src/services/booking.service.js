@@ -3,7 +3,6 @@ import { EQUIPMENT_STATUSES } from "../constants/equipment.js";
 import { getClient } from "../config/db.js";
 import { env, redactMongoUri } from "../config/env.js";
 import {
-  COLLECTIONS,
   getBookingIntentsCollection,
   getBookingsCollection,
   getEquipmentCollection,
@@ -12,21 +11,18 @@ import {
 } from "../models/collections.js";
 import {
   buildBookingIntentDocument,
-  formatCustomerBookingRecord,
   sanitizeBookingIntentResponse,
 } from "../models/bookingIntent.model.js";
 import { buildUserLookupFilter } from "../models/user.model.js";
 import { ApiError } from "../utils/ApiError.js";
-import { escapeRegexInput } from "../utils/regex.js";
 import { calculateReservationExpiration } from "../utils/rentalDate.js";
 import {
   validateAvailabilityCheckPayload,
-  validateBookingIdParam,
   validateCreateBookingPayload,
-  validateCustomerBookingsQuery,
 } from "../validators/booking.validator.js";
 import { normalizeUserIdentifier } from "../validators/validationHelpers.js";
 import { calculateOverlappingReservedQuantity } from "./availability.service.js";
+import { createCustomerBookingService } from "./customerBooking.service.js";
 import { calculateAuthoritativeRentalPricing } from "./rentalPricing.service.js";
 
 const TX_OPTIONS = Object.freeze({
@@ -339,188 +335,19 @@ export function createBookingService({
     },
 
     async listCustomerBookings({ customerId, query = {} }) {
-      const normalizedCustomerId = normalizeUserIdentifier(customerId, "customerId");
-      const validatedQuery = validateCustomerBookingsQuery(query);
-      const bookingsCollection = await bookingsCollectionGetter();
-
-      const matchStage = { customerId: normalizedCustomerId };
-      if (validatedQuery.bookingStatus !== "all") {
-        matchStage.bookingStatus = validatedQuery.bookingStatus;
-      }
-      if (validatedQuery.paymentStatus !== "all") {
-        matchStage.paymentStatus = validatedQuery.paymentStatus;
-      }
-
-      const pipeline = [
-        { $match: matchStage },
-        {
-          $lookup: {
-            from: COLLECTIONS.EQUIPMENT,
-            localField: "equipmentId",
-            foreignField: "_id",
-            as: "equipmentDoc",
-          },
-        },
-        {
-          $unwind: {
-            path: "$equipmentDoc",
-            preserveNullAndEmptyArrays: true,
-          },
-        },
-      ];
-
-      if (validatedQuery.search) {
-        const pattern = escapeRegexInput(validatedQuery.search);
-        pipeline.push({
-          $match: {
-            $or: [
-              { "equipmentDoc.name": { $regex: pattern, $options: "i" } },
-              { "equipmentDoc.category": { $regex: pattern, $options: "i" } },
-            ],
-          },
-        });
-      }
-
-      pipeline.push(
-        {
-          $project: {
-            _id: 1,
-            equipmentId: 1,
-            startDate: 1,
-            endDate: 1,
-            quantity: 1,
-            rentalType: 1,
-            rentalPrice: 1,
-            totalAmount: 1,
-            currency: 1,
-            paymentStatus: 1,
-            bookingStatus: 1,
-            createdAt: 1,
-            equipmentDoc: {
-              _id: "$equipmentDoc._id",
-              name: "$equipmentDoc.name",
-              image: "$equipmentDoc.image",
-              category: "$equipmentDoc.category",
-              rentalType: "$equipmentDoc.rentalType",
-            },
-          },
-        },
-        { $sort: { createdAt: -1, _id: -1 } },
-        {
-          $facet: {
-            metadata: [{ $count: "total" }],
-            items: [
-              { $skip: validatedQuery.skip },
-              { $limit: validatedQuery.limit },
-            ],
-          },
-        }
-      );
-
-      const aggregated = await bookingsCollection.aggregate(pipeline).toArray();
-      const facetResult = aggregated[0] || {};
-      const totalItems = Number(facetResult.metadata?.[0]?.total) || 0;
-      const docs = Array.isArray(facetResult.items) ? facetResult.items : [];
-
-      return {
-        items: docs
-          .map((doc) => formatCustomerBookingRecord(doc, { detailed: false }))
-          .filter(Boolean),
-        pagination: {
-          currentPage: validatedQuery.page,
-          limit: validatedQuery.limit,
-          totalItems,
-          totalPages:
-            totalItems === 0 ? 0 : Math.ceil(totalItems / validatedQuery.limit),
-        },
-      };
+      const customerService = createCustomerBookingService({
+        bookingsCollectionGetter,
+        paymentsCollectionGetter,
+      });
+      return customerService.listCustomerBookings({ customerId, query });
     },
 
     async getCustomerBookingDetails({ customerId, bookingId }) {
-      const normalizedCustomerId = normalizeUserIdentifier(customerId, "customerId");
-      const bookingObjectId = validateBookingIdParam(bookingId);
-
-      const [bookingsCollection] = await Promise.all([
-        bookingsCollectionGetter(),
-        // Ensure payments collection accessor remains part of dependency graph for health/testability
-        paymentsCollectionGetter().catch(() => null),
-      ]);
-
-      const pipeline = [
-        {
-          $match: {
-            _id: bookingObjectId,
-            customerId: normalizedCustomerId,
-          },
-        },
-        {
-          $lookup: {
-            from: COLLECTIONS.EQUIPMENT,
-            localField: "equipmentId",
-            foreignField: "_id",
-            as: "equipmentDoc",
-          },
-        },
-        {
-          $unwind: {
-            path: "$equipmentDoc",
-            preserveNullAndEmptyArrays: true,
-          },
-        },
-        {
-          $lookup: {
-            from: COLLECTIONS.PAYMENTS,
-            localField: "_id",
-            foreignField: "bookingId",
-            as: "paymentDoc",
-          },
-        },
-        {
-          $unwind: {
-            path: "$paymentDoc",
-            preserveNullAndEmptyArrays: true,
-          },
-        },
-        {
-          $project: {
-            _id: 1,
-            equipmentId: 1,
-            startDate: 1,
-            endDate: 1,
-            quantity: 1,
-            contactNumber: 1,
-            deliveryAddress: 1,
-            additionalNotes: 1,
-            rentalType: 1,
-            rentalPrice: 1,
-            totalAmount: 1,
-            currency: 1,
-            paymentStatus: 1,
-            bookingStatus: 1,
-            createdAt: 1,
-            equipmentDoc: {
-              _id: "$equipmentDoc._id",
-              name: "$equipmentDoc.name",
-              image: "$equipmentDoc.image",
-              category: "$equipmentDoc.category",
-              rentalType: "$equipmentDoc.rentalType",
-            },
-            paymentDoc: {
-              stripePaymentIntentId: "$paymentDoc.stripePaymentIntentId",
-              paidAt: "$paymentDoc.paidAt",
-              status: "$paymentDoc.status",
-            },
-          },
-        },
-        { $limit: 1 },
-      ];
-
-      const docs = await bookingsCollection.aggregate(pipeline).toArray();
-      if (!docs || docs.length === 0) {
-        throw new ApiError("Booking not found", 404, { code: "NOT_FOUND" });
-      }
-
-      return formatCustomerBookingRecord(docs[0], { detailed: true });
+      const customerService = createCustomerBookingService({
+        bookingsCollectionGetter,
+        paymentsCollectionGetter,
+      });
+      return customerService.getCustomerBookingDetails({ customerId, bookingId });
     },
   };
 }

@@ -18,6 +18,10 @@ export const COLLECTION_INDEX_SPECS = Object.freeze({
       key: { role: 1 },
       options: { name: "users_role_idx" },
     },
+    {
+      key: { id: 1 },
+      options: { name: "users_better_auth_id_idx", sparse: true },
+    },
   ],
   [COLLECTIONS.EQUIPMENT]: [
     {
@@ -97,6 +101,22 @@ export const COLLECTION_INDEX_SPECS = Object.freeze({
     {
       key: { createdAt: -1 },
       options: { name: "bookings_created_at_desc_idx" },
+    },
+    {
+      key: { customerId: 1, createdAt: -1, _id: -1 },
+      options: { name: "bookings_customer_created_idx" },
+    },
+    {
+      key: { ownerId: 1, createdAt: -1, _id: -1 },
+      options: { name: "bookings_owner_created_idx" },
+    },
+    {
+      key: { startDate: 1, _id: -1 },
+      options: { name: "bookings_start_date_idx" },
+    },
+    {
+      key: { endDate: 1, _id: -1 },
+      options: { name: "bookings_end_date_idx" },
     },
     {
       key: { equipmentId: 1, bookingStatus: 1, startDate: 1, endDate: 1 },

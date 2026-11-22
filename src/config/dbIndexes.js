@@ -116,6 +116,14 @@ export const COLLECTION_INDEX_SPECS = Object.freeze({
       key: { expiresAt: 1 },
       options: { name: "booking_intents_expires_at_ttl_idx", expireAfterSeconds: 0 },
     },
+    {
+      key: { stripeCheckoutSessionId: 1 },
+      options: {
+        name: "booking_intents_stripe_session_unique",
+        unique: true,
+        partialFilterExpression: { stripeCheckoutSessionId: { $type: "string" } },
+      },
+    },
   ],
   [COLLECTIONS.FAVORITES]: [
     {

@@ -15,14 +15,21 @@ function parsePort(rawPort) {
   return parsed;
 }
 
-function parsePositiveMinutes(rawValue, fallback = 10, name = "BOOKING_HOLD_MINUTES") {
+function parsePositiveMinutes(
+  rawValue,
+  fallback = 10,
+  name = "BOOKING_HOLD_MINUTES",
+  { min = 1, max = 1440 } = {}
+) {
   if (rawValue === undefined || rawValue === null || String(rawValue).trim() === "") {
     return fallback;
   }
 
   const parsed = Number(rawValue);
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 1440) {
-    throw new Error(`Invalid ${name} "${rawValue}". Expected an integer between 1 and 1440.`);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(
+      `Invalid ${name} "${rawValue}". Expected an integer between ${min} and ${max}.`
+    );
   }
 
   return parsed;
@@ -82,6 +89,11 @@ const clientUrl = process.env.CLIENT_URL
   : nodeEnv !== "production"
     ? "http://localhost:3000"
     : "";
+
+if (nodeEnv === "production" && clientUrl && !clientUrl.startsWith("https://")) {
+  throw new Error('CLIENT_URL must use "https://" when NODE_ENV=production.');
+}
+
 const corsOrigins = parseCorsOrigins({
   rawCorsOrigins: process.env.CORS_ORIGINS,
   rawClientUrl: process.env.CLIENT_URL,
@@ -105,17 +117,24 @@ export const env = Object.freeze({
   dbServerSelectionTimeoutMs: Number(process.env.DB_SERVER_SELECTION_TIMEOUT_MS) || 5000,
   dbSocketTimeoutMs: Number(process.env.DB_SOCKET_TIMEOUT_MS) || 20000,
   bookingHoldMinutes: parsePositiveMinutes(process.env.BOOKING_HOLD_MINUTES, 10),
+  stripeCurrency: String(process.env.STRIPE_CURRENCY || "").trim().toLowerCase(),
+  stripeCheckoutExpireMinutes: parsePositiveMinutes(
+    process.env.STRIPE_CHECKOUT_EXPIRE_MINUTES,
+    30,
+    "STRIPE_CHECKOUT_EXPIRE_MINUTES",
+    { min: 30, max: 1440 }
+  ),
   betterAuthUrl: String(process.env.BETTER_AUTH_URL || "").trim().replace(/\/+$/, ""),
 });
 
 /**
- * Strips credentials from MongoDB connection strings before emitting logs or error strings.
+ * Strips database and Stripe API credentials from logs or client-facing error strings.
  */
 export function redactMongoUri(text = "") {
-  return String(text).replace(
-    /(mongodb(?:\+srv)?:\/\/)([^/\s@]+)@/gi,
-    "$1***:***@"
-  );
+  return String(text)
+    .replace(/(mongodb(?:\+srv)?:\/\/)([^/\s@]+)@/gi, "$1***:***@")
+    .replace(/\b(?:sk|rk|whsec)_(?:test|live)?_[A-Za-z0-9]+\b/gi, "[REDACTED_KEY]")
+    .replace(/\bwhsec_[A-Za-z0-9]+\b/gi, "[REDACTED_KEY]");
 }
 
 /**

@@ -285,6 +285,25 @@ All Customer booking endpoints require **BOTH** `verifyToken` and `verifyRenter`
 
 ---
 
+## Stripe Hosted Checkout Integration (Commit 10)
+
+Initiates Stripe Hosted Checkout sessions from verified `bookingIntents` reservations. **Creating a Checkout Session does NOT confirm payment or create finalized bookings** — verified Stripe webhook processing (`POST /api/payments/webhook` in Server Commit 11) creates the final `bookings` and `payments` records and marks the reservation `"Converted"`.
+
+- **Environment & Stripe Test Mode:** Uses singleton `stripe` SDK initialization via `STRIPE_SECRET_KEY` (use `sk_test_...` test keys in development; never expose keys to logs, API responses, or client bundles). Requires HTTPS `CLIENT_URL` in production.
+- **Currency & Account Eligibility (`STRIPE_CURRENCY`):** Explicitly configured (e.g., `STRIPE_CURRENCY=bdt`) without silent exchange-rate conversion. Before session creation, [stripe.js](src/config/stripe.js) verifies via `stripe.accounts.retrieve()` and `stripe.countrySpecs.retrieve()` that the connected Stripe account country supports the configured currency (`503` if ineligible).
+- **Currency Minor-Unit Conversion:** [currency.js](src/utils/currency.js) converts stored `totalAmount` using ISO decimal exponents (zero-decimal e.g. `jpy` = 0, two-decimal e.g. `bdt`/`usd` = 2 where ৳51,000 = `5100000` paisa, three-decimal e.g. `kwd` = 3) with integer rounding and Stripe min/max bounds checks.
+- **Expiration Sync & Compensating Cleanup:** Checkout sessions expire in `STRIPE_CHECKOUT_EXPIRE_MINUTES=30` (Stripe's `[30m, 24h]` window), and the associated `bookingIntent.expiresAt` is extended to `checkoutExpiresAt + 2 minutes` so inventory stays locked during Hosted Checkout. If DB persistence fails after creating a Stripe session, the server attempts immediate `stripe.checkout.sessions.expire()`.
+- **Idempotency & Concurrency:** An atomic MongoDB lease lock (`checkoutInProgressUntil`) prevents duplicate simultaneous Stripe calls, deterministic idempotency keys (`gearnest_checkout_<bookingIntentId>_attempt_<n>`) protect retries, and existing `open` unexpired Stripe sessions are reused seamlessly (`200`).
+- **Redirect URLs:** Strictly derived server-side from `CLIENT_URL` (no client redirect URLs accepted):
+  - Success: `${CLIENT_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`
+  - Cancel: `${CLIENT_URL}/payment/cancel?bookingIntentId=${bookingIntentId}`
+
+| Method & Endpoint | Auth / Role | Request Body | Response Format | Error Responses |
+| --- | --- | --- | --- | --- |
+| `POST /api/payments/create-checkout-session` | `verifyToken`, `verifyRenter` (`Customer`) | JSON `{ "bookingIntentId": "<ObjectId>" }` | `201` (or `200` on open session reuse): `{ success: true, message: "Stripe Checkout Session created successfully", data: { bookingIntentId, sessionId, checkoutUrl, expiresAt, currency, totalAmount } }` | `400` (`Invalid booking reservation` / tampered fields), `401`, `403` (`Customer access required`), `404` (`Booking reservation not found`), `409` (already processed / unapproved equipment), `410` (`Booking reservation has expired`), `503` (Stripe unavailable or unsupported account currency), `504` (timeout) |
+
+---
+
 ## Development, Testing & Production Scripts
 
 ```bash

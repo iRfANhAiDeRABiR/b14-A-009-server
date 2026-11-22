@@ -205,6 +205,7 @@ All JSON endpoints follow `{ "success": boolean, "message": string, "data"?: ...
 | --- | --- | --- | --- |
 | `GET` | `/api/equipment` | Public | `?search=&category=&rentalType=&minPrice=&maxPrice=&availability=&sort=&page=1&limit=9` (`Approved` only) |
 | `GET` | `/api/equipment/featured` | Public | `?limit=6` (max `12`), newest `Approved` items via MongoDB `.limit()` |
+| `GET` | `/api/equipment/recent` | Public | `?limit=4` (max `12`), newest `Approved` recently added items via MongoDB `.limit()` |
 | `GET` | `/api/equipment/my` | `verifyToken`, `verifyOwner` | `?status=&page=1&limit=10`, Owner's own listings across all statuses + summary |
 | `POST` | `/api/equipment` | `verifyToken`, `verifyOwner` | Submits 12-field listing (`status: "Pending"` forced; `ownerId` from `req.user.id`) |
 | `GET` | `/api/equipment/:id` | `verifyToken` | Public-approved or owner's own item details (`404` for unauthorized unapproved items) |

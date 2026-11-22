@@ -51,6 +51,39 @@ export function createEquipmentService({
     usersCollectionGetter,
   });
 
+  async function listLatestApprovedEquipment({ limit, defaultLimit }) {
+    let safeLimit = defaultLimit;
+    if (limit !== undefined && limit !== null && String(limit).trim() !== "") {
+      const parsed = Number(limit);
+      if (!Number.isInteger(parsed) || parsed < 1) {
+        throw new ApiError("limit must be a positive integer.", 400, {
+          code: "VALIDATION_ERROR",
+        });
+      }
+      safeLimit = Math.min(12, parsed);
+    }
+
+    const [equipmentCollection, usersCollection] = await Promise.all([
+      equipmentCollectionGetter(),
+      usersCollectionGetter(),
+    ]);
+
+    const docs = await equipmentCollection
+      .find({ status: EQUIPMENT_STATUSES.APPROVED, isDeleted: { $ne: true } })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(safeLimit)
+      .toArray();
+
+    const ownerMap = await hydrateEquipmentOwners(
+      usersCollection,
+      docs.map((item) => item.ownerId)
+    );
+
+    return docs.map((doc) =>
+      sanitizeEquipmentRecord(doc, ownerMap.get(String(doc.ownerId)) || null)
+    );
+  }
+
   return {
     async createEquipment({ ownerId, payload }) {
       const cleanData = validateEquipmentCreatePayload(payload);
@@ -86,36 +119,11 @@ export function createEquipmentService({
     },
 
     async getFeaturedEquipment({ limit } = {}) {
-      let safeLimit = 6;
-      if (limit !== undefined && limit !== null && String(limit).trim() !== "") {
-        const parsed = Number(limit);
-        if (!Number.isInteger(parsed) || parsed < 1) {
-          throw new ApiError("limit must be a positive integer.", 400, {
-            code: "VALIDATION_ERROR",
-          });
-        }
-        safeLimit = Math.min(12, parsed);
-      }
+      return listLatestApprovedEquipment({ limit, defaultLimit: 6 });
+    },
 
-      const [equipmentCollection, usersCollection] = await Promise.all([
-        equipmentCollectionGetter(),
-        usersCollectionGetter(),
-      ]);
-
-      const docs = await equipmentCollection
-        .find({ status: EQUIPMENT_STATUSES.APPROVED, isDeleted: { $ne: true } })
-        .sort({ createdAt: -1, _id: -1 })
-        .limit(safeLimit)
-        .toArray();
-
-      const ownerMap = await hydrateEquipmentOwners(
-        usersCollection,
-        docs.map((item) => item.ownerId)
-      );
-
-      return docs.map((doc) =>
-        sanitizeEquipmentRecord(doc, ownerMap.get(String(doc.ownerId)) || null)
-      );
+    async getRecentEquipment({ limit } = {}) {
+      return listLatestApprovedEquipment({ limit, defaultLimit: 4 });
     },
 
     async listPublicApprovedEquipment(rawQuery = {}) {

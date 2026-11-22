@@ -8,7 +8,7 @@ import { verifyToken } from "../middleware/verifyToken.js";
 
 /**
  * Registers public, owner-protected, and authenticated detail equipment endpoints.
- * Specific paths (`/featured`, `/my`) are registered strictly before parameterized `/:id`.
+ * Specific paths (`/featured`, `/recent`, `/my`) are registered strictly before parameterized `/:id`.
  */
 export function createEquipmentRouter({
   authMiddleware = verifyToken,
@@ -19,6 +19,7 @@ export function createEquipmentRouter({
 
   // Specific non-parameterized routes first
   router.get("/featured", controller.getFeatured);
+  router.get("/recent", controller.getRecent);
   router.get("/my", authMiddleware, ownerMiddleware, controller.listMine);
 
   // Collection root routes

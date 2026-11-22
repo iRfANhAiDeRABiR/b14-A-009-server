@@ -13,6 +13,15 @@ export function createEquipmentController(service = equipmentService) {
       });
     }),
 
+    getRecent: asyncHandler(async (req, res) => {
+      const items = await service.getRecentEquipment({ limit: req.query.limit });
+      return sendSuccess(res, {
+        statusCode: 200,
+        message: "Recently added equipment retrieved successfully",
+        data: items,
+      });
+    }),
+
     listPublic: asyncHandler(async (req, res) => {
       const result = await service.listPublicApprovedEquipment(req.query);
       return sendSuccess(res, {

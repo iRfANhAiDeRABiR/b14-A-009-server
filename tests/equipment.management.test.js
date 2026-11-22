@@ -479,6 +479,15 @@ describe("Equipment Management & Image Upload APIs (Commit 06)", () => {
     assert.ok(featMaxJson.data.length <= 12);
     assert.ok(equipmentSpy.some((s) => s.op === "limit" && s.value === 12));
 
+    // Public Recent -> defaults to MongoDB .limit(4), Approved only, no auth required
+    equipmentSpy.length = 0;
+    const recentRes = await fetch(`${baseUrl}/api/equipment/recent`);
+    const recentJson = await recentRes.json();
+    assert.equal(recentRes.status, 200);
+    assert.equal(recentJson.data.length, 4);
+    assert.ok(equipmentSpy.some((s) => s.op === "limit" && s.value === 4));
+    assert.ok(recentJson.data.every((i) => i.status === EQUIPMENT_STATUSES.APPROVED));
+
     // Details checks
     assert.equal((await fetch(`${baseUrl}/api/equipment/${approvedIds[0].toHexString()}`)).status, 401);
     assert.equal(

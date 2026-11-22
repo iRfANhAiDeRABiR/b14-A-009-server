@@ -260,6 +260,31 @@ All Favorites endpoints require **BOTH** `verifyToken` and `verifyRenter` (mappe
 
 ---
 
+## Rental Booking & Availability APIs (Commit 09)
+
+All Customer booking endpoints require **BOTH** `verifyToken` and `verifyRenter` (mapped strictly to canonical database role `Customer`).
+
+- **Two-Stage Booking Lifecycle:**
+  1. **Stage 1 (Temporary Reservation — Commit 09):** `POST /api/bookings` validates dates/inventory/pricing inside a MongoDB multi-document transaction and creates a `PendingPayment` record inside `bookingIntents` (default hold `BOOKING_HOLD_MINUTES=10`). No finalized booking is created and payment is never marked `Paid` before payment verification.
+  2. **Stage 2 (Stripe Checkout & Finalization — Planned Commit 10/11):** Server Commit 10 creates the Stripe Checkout Session from `bookingIntentId`, and Server Commit 11 verifies Stripe webhook signatures before converting the reservation into finalized `bookings` and `payments` documents.
+- **Inclusive Calendar Dates (UTC):** `startDate` and `endDate` must follow strict `YYYY-MM-DD`, cannot be in the past (`startDate >= today UTC`), and cannot reverse (`endDate >= startDate`). Total inclusive days count both boundaries (`2026-11-24`..`2026-11-26` = `3` days).
+- **Authoritative Server Pricing Formula (BDT):** Calculated independently from MongoDB `equipment.rentalPrice` and `equipment.rentalType` using minor-unit integer arithmetic (`Total = rentalPrice × billableUnits × quantity`):
+  - `Daily`: `billableUnits = inclusiveDays`
+  - `Weekly`: `billableUnits = Math.ceil(inclusiveDays / 7)`
+  - `Monthly`: `billableUnits = Math.ceil(inclusiveDays / 30)`
+- **Overlap Availability & Cleanup:** Overlaps match `existing.startDate <= requested.endDate && existing.endDate >= requested.startDate`, summing non-cancelled finalized `bookings` plus unexpired `bookingIntents` (`status: "PendingPayment"` AND explicit `expiresAt > now` check, never relying solely on asynchronous MongoDB TTL cleanup `booking_intents_expires_at_ttl_idx`).
+- **Concurrency & Replica Set Requirement:** `POST /api/bookings` requires a transaction-capable MongoDB deployment (replica set / Atlas / `MONGODB_TRANSACTIONS=true`). Inside `session.withTransaction`, the server increments `reservationVersion` on the `equipment` document to serialize overlapping requests via MongoDB write conflicts and retries; standalone MongoDB instances reject safely with HTTP `503` rather than falling back to unsafe non-transactional writes.
+- **Customer Data Isolation:** `customerId`, `ownerId`, `rentalPrice`, `totalAmount`, `billableUnits`, `paymentStatus`, `bookingStatus`, and `expiresAt` are always derived server-side from `req.user.id` and DB equipment records (tampered client values are rejected). `GET /api/bookings/my` and `GET /api/bookings/:id` expose finalized `bookings` belonging solely to `req.user.id` (never returning `bookingIntents` or payment secrets).
+
+| Method & Endpoint | Auth / Role | Request / Query | Response Format | Error Responses |
+| --- | --- | --- | --- | --- |
+| `POST /api/bookings/check-availability` | `verifyToken`, `verifyRenter` (`Customer`) | `{ equipmentId, startDate, endDate, quantity }` | `200`: `{ success: true, data: { available, equipmentId, requestedQuantity, totalQuantity, reservedQuantity, remainingQuantity } }` | `400`, `401`, `403`, `404` (`Equipment not found`), `409` (`Not approved`) |
+| `POST /api/bookings` | `verifyToken`, `verifyRenter` (`Customer`) | `{ equipmentId, startDate, endDate, quantity, contactNumber, deliveryAddress, additionalNotes? }` | `201` (or idempotent `200`): `{ success: true, message, data: { bookingIntentId, equipmentId, equipmentName, startDate, endDate, quantity, rentalType, rentalPrice, billableUnits, totalAmount, currency: "BDT", status: "PendingPayment", expiresAt } }` | `400`, `401`, `403`, `404`, `409` (insufficient inventory / unapproved), `503` (transactions unavailable) |
+| `GET /api/bookings/my` | `verifyToken`, `verifyRenter` (`Customer`) | `?page=1&limit=10&bookingStatus=&paymentStatus=&search=` | `200`: `{ success: true, data: [...], pagination: { currentPage, limit, totalItems, totalPages } }` | `400`, `401`, `403` |
+| `GET /api/bookings/:id` | `verifyToken`, `verifyRenter` (`Customer`) | Route param `:id` (`ObjectId`) | `200`: `{ success: true, data: { _id, equipment, startDate, endDate, durationDays, quantity, rentalType, rentalPrice, totalAmount, paymentStatus, bookingStatus, transactionId, paidAt, contactNumber, deliveryAddress, additionalNotes } }` | `400` (`Invalid booking ID`), `401`, `403`, `404` (`Booking not found`) |
+
+---
+
 ## Development, Testing & Production Scripts
 
 ```bash

@@ -103,6 +103,20 @@ export const COLLECTION_INDEX_SPECS = Object.freeze({
       options: { name: "bookings_availability_dates_idx" },
     },
   ],
+  [COLLECTIONS.BOOKING_INTENTS]: [
+    {
+      key: { customerId: 1, createdAt: -1 },
+      options: { name: "booking_intents_customer_idx" },
+    },
+    {
+      key: { equipmentId: 1, status: 1, expiresAt: 1, startDate: 1, endDate: 1 },
+      options: { name: "booking_intents_availability_dates_idx" },
+    },
+    {
+      key: { expiresAt: 1 },
+      options: { name: "booking_intents_expires_at_ttl_idx", expireAfterSeconds: 0 },
+    },
+  ],
   [COLLECTIONS.FAVORITES]: [
     {
       key: { userId: 1, equipmentId: 1 },
@@ -186,11 +200,14 @@ function isEquivalentIndex(existingIndex, spec) {
 
   const sameUnique = Boolean(existingIndex.unique) === Boolean(spec.options?.unique);
   const sameSparse = Boolean(existingIndex.sparse) === Boolean(spec.options?.sparse);
+  const sameExpireAfterSeconds =
+    (existingIndex.expireAfterSeconds ?? null) ===
+    (spec.options?.expireAfterSeconds ?? null);
   const samePartial =
     JSON.stringify(existingIndex.partialFilterExpression ?? null) ===
     JSON.stringify(spec.options?.partialFilterExpression ?? null);
 
-  return sameUnique && sameSparse && samePartial;
+  return sameUnique && sameSparse && sameExpireAfterSeconds && samePartial;
 }
 
 async function listCollectionNames(db) {

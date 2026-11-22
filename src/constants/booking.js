@@ -12,6 +12,20 @@ export const ALLOWED_BOOKING_STATUSES = Object.freeze(
 
 export const DEFAULT_BOOKING_STATUS = BOOKING_STATUSES.PENDING;
 
+export const BOOKING_INTENT_STATUSES = Object.freeze({
+  PENDING_PAYMENT: "PendingPayment",
+  EXPIRED: "Expired",
+  CONVERTED: "Converted",
+  FAILED: "Failed",
+});
+
+export const ALLOWED_BOOKING_INTENT_STATUSES = Object.freeze(
+  Object.values(BOOKING_INTENT_STATUSES)
+);
+
+export const DEFAULT_BOOKING_INTENT_STATUS =
+  BOOKING_INTENT_STATUSES.PENDING_PAYMENT;
+
 export const CONTACT_INQUIRY_TYPES = Object.freeze([
   "General Inquiry",
   "Equipment Rental",

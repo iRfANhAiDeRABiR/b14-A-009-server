@@ -15,6 +15,19 @@ function parsePort(rawPort) {
   return parsed;
 }
 
+function parsePositiveMinutes(rawValue, fallback = 10, name = "BOOKING_HOLD_MINUTES") {
+  if (rawValue === undefined || rawValue === null || String(rawValue).trim() === "") {
+    return fallback;
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 1440) {
+    throw new Error(`Invalid ${name} "${rawValue}". Expected an integer between 1 and 1440.`);
+  }
+
+  return parsed;
+}
+
 function normalizeOrigin(origin) {
   const cleaned = String(origin || "").trim().replace(/\/+$/, "");
   if (!cleaned) return "";
@@ -91,6 +104,7 @@ export const env = Object.freeze({
   dbConnectTimeoutMs: Number(process.env.DB_CONNECT_TIMEOUT_MS) || 10000,
   dbServerSelectionTimeoutMs: Number(process.env.DB_SERVER_SELECTION_TIMEOUT_MS) || 5000,
   dbSocketTimeoutMs: Number(process.env.DB_SOCKET_TIMEOUT_MS) || 20000,
+  bookingHoldMinutes: parsePositiveMinutes(process.env.BOOKING_HOLD_MINUTES, 10),
   betterAuthUrl: String(process.env.BETTER_AUTH_URL || "").trim().replace(/\/+$/, ""),
 });
 

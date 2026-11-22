@@ -1,5 +1,6 @@
 import { Router } from "express";
 import adminRouter from "./admin.routes.js";
+import bookingRouter from "./booking.routes.js";
 import equipmentRouter from "./equipment.routes.js";
 import favoriteRouter from "./favorite.routes.js";
 import healthRouter from "./health.routes.js";
@@ -9,7 +10,7 @@ import userRouter from "./user.routes.js";
 
 const apiRouter = Router();
 
-// Implemented REST modules (Commits 01-08)
+// Implemented REST modules (Commits 01-09)
 // Note: Better Auth endpoints (/api/auth/*splat) are mounted in src/app.js before express.json().
 apiRouter.use("/health", healthRouter);
 apiRouter.use("/protected", protectedRouter);
@@ -18,10 +19,10 @@ apiRouter.use("/admin", adminRouter);
 apiRouter.use("/equipment", equipmentRouter);
 apiRouter.use("/uploads", uploadRouter);
 apiRouter.use("/favorites", favoriteRouter);
+apiRouter.use("/bookings", bookingRouter);
 
 /*
  * Planned feature module mounts (upcoming commits):
- * - /api/bookings   (Commit 09+)
  * - /api/payments   (Commit 10+)
  * - /api/owner      (Commit 11+)
  */

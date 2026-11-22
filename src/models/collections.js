@@ -9,6 +9,7 @@ export const COLLECTIONS = Object.freeze({
   USERS: "users",
   EQUIPMENT: "equipment",
   BOOKINGS: "bookings",
+  BOOKING_INTENTS: "bookingIntents",
   FAVORITES: "favorites",
   PAYMENTS: "payments",
   CONTACT_MESSAGES: "contactMessages",
@@ -25,6 +26,10 @@ export function getEquipmentCollection(db = getDB()) {
 
 export function getBookingsCollection(db = getDB()) {
   return db.collection(COLLECTIONS.BOOKINGS);
+}
+
+export function getBookingIntentsCollection(db = getDB()) {
+  return db.collection(COLLECTIONS.BOOKING_INTENTS);
 }
 
 export function getFavoritesCollection(db = getDB()) {

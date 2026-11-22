@@ -242,6 +242,24 @@ GET /api/equipment?search=excavator&category=Construction%20Equipment&rentalType
 
 ---
 
+## Customer Favorites APIs (Commit 08)
+
+All Favorites endpoints require **BOTH** `verifyToken` and `verifyRenter` (mapped strictly to the canonical database role `Customer`; `Owner` and `Admin` receive HTTP `403 "Customer access required"` and unauthenticated requests receive `401 "Authentication required"`).
+
+- **MongoDB Collection & Better Auth Identity:** Reuses `favorites` storing `{ userId, equipmentId, createdAt }`, where `userId` preserves the authenticated Better Auth user identifier (`req.user.id`) without coercing non-ObjectId IDs, `equipmentId` references an `equipment._id` ObjectId, and equipment documents are never duplicated inside `favorites`.
+- **Unique Compound Index:** Enforced by `favorites_user_equipment_unique` (`{ userId: 1, equipmentId: 1 }`, `unique: true`) plus `favorites_user_created_at_desc_idx` (`{ userId: 1, createdAt: -1 }`). Concurrent duplicate inserts catching `E11000` return a consistent idempotent response without inserting duplicate records.
+- **Equipment Approval & Data Isolation:** Only `Approved` equipment may be added to Favorites (`Pending` / `Rejected` items return HTTP `400`). Every query filters strictly by `req.user.id` — any `userId` supplied in request bodies, params, or query strings is ignored.
+- **Visibility & Orphan Handling (`GET /api/favorites`):** Uses MongoDB `$lookup` + `$unwind` (`preserveNullAndEmptyArrays: true`) + `$project`. Approved zero-quantity items remain visible as `"Unavailable"`; items later switched to `Pending`/`Rejected` return a minimal hidden placeholder so private details never leak; deleted equipment returns `"Unavailable (Removed)"` (`isDeleted: true`) so Customers can still remove stale favorites.
+
+| Method & Endpoint | Auth / Role | Request Body / Params | Success Response | Error Responses |
+| --- | --- | --- | --- | --- |
+| `POST /api/favorites` | `verifyToken`, `verifyRenter` (`Customer`) | JSON `{ "equipmentId": "<ObjectId>" }` | `201` (or idempotent `200` if already saved): `{ success: true, message, data: { equipmentId, isFavorite: true } }` | `400` (`Invalid equipment ID`, non-approved equipment, invalid body), `401`, `403`, `404` (`Equipment not found`) |
+| `GET /api/favorites` | `verifyToken`, `verifyRenter` (`Customer`) | Optional `?page=1&limit=12` (max `100`) | `200`: `{ success: true, message, data: [...] }` (sorted newest first; includes `pagination` when `page`/`limit` supplied) | `400` (`Invalid pagination parameters`), `401`, `403` |
+| `GET /api/favorites/:equipmentId/status` | `verifyToken`, `verifyRenter` (`Customer`) | Route param `:equipmentId` (`ObjectId`) | `200`: `{ success: true, message, data: { equipmentId, isFavorite: boolean } }` | `400` (`Invalid equipment ID`), `401`, `403` |
+| `DELETE /api/favorites/:equipmentId` | `verifyToken`, `verifyRenter` (`Customer`) | Route param `:equipmentId` (`ObjectId`) | `200`: `{ success: true, message: "Equipment removed from favorites successfully", data: { equipmentId, isFavorite: false } }` | `400` (`Invalid equipment ID`), `401`, `403`, `404` (`Favorite not found`) |
+
+---
+
 ## Development, Testing & Production Scripts
 
 ```bash

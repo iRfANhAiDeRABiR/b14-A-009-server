@@ -1,397 +1,335 @@
-# GearNest API
+# GearNest — Equipment Rental Platform API
 
-## Project Overview
+## 1. Project Overview
 
-GearNest API powers the backend REST services for **GearNest — Equipment Rental Platform**, connecting equipment owners and customers through an organized marketplace.
-
-- **Implemented in Commit 01–03:** Express.js application bootstrap, environment validation, restricted credentialed CORS, Helmet security headers, Morgan HTTP logging, singleton MongoDB Node.js Driver connection (`connectDB`, `getDB`, `getClient`, `closeDB`), collection architecture, idempotent database index initialization, Better Auth authentication + `@better-auth/mongo-adapter` integration (`users` collection + `sessions`/`accounts`/`verifications`/`jwks`), email/password registration & login with server-side complexity hooks, conditional Google OAuth setup, `jwt()` plugin (`/api/auth/token` & `/api/auth/jwks`), centralized error handling, liveness (`GET /api/health`), and readiness (`GET /api/health/ready`) endpoints.
-- **Planned in subsequent commits:** JWT & RBAC route protection middleware (Commit 04), User role/profile management APIs (Commit 05+), Equipment/Favorites/Booking/Owner/Admin APIs, ImgBB image upload proxying, Stripe Checkout & webhook processing (Commit 10+), and Contact message endpoints.
+**GearNest — Equipment Rental Platform API** is the production-oriented REST backend built with Express.js and MongoDB for the GearNest marketplace, enabling equipment Owners to list rental assets, Customers to search, favorite, reserve, and pay for rentals via Stripe Checkout, and Admins to moderate equipment, govern roles, monitor transactions, and analyze platform revenue.
 
 ---
 
-## Technology Stack
+## 2. Main Features
 
-### Implemented
-- **Runtime:** Node.js (ES Modules)
-- **Framework:** Express.js (`^5.1.0`)
+- **Better Auth Authentication:** Shared MongoDB-backed authentication (`/api/auth/*`) supporting email/password registration, email/password login, conditional Google OAuth login, logout, persistent sessions, and JWT issuance.
+- **Role-Based Access Control (RBAC) & JWT Verification:** Cryptographic JWKS verification (`EdDSA`, `ES256`, `RS256`) paired with fresh MongoDB user lookups and four guards: `verifyToken`, `verifyRenter` (`Customer`), `verifyOwner` (`Owner`), and `verifyAdmin` (`Admin`).
+- **User & Profile Management:** Authenticated user self-profile retrieval/update (`GET/PATCH /api/users/me`) and Admin user listing, inspection, and controlled role management (`GET /api/admin/users`, `GET /api/admin/users/:id`, `PATCH /api/admin/users/:id/role`).
+- **Equipment Management & ImgBB Upload:** Owner equipment submission (`Pending` by default), listing, update, booking-safe deletion, server-side ImgBB multipart image proxying (`POST /api/uploads/equipment-image`), public approved catalog listing, and homepage featured limit (`6` items).
+- **Server-Side Search, Filtering, Sorting & Pagination:** Direct MongoDB querying (`search`, `category`, `rentalType`, `minPrice`, `maxPrice`, `availability`, `sort`, `page`, `limit`) limited strictly to `Approved` non-archived listings.
+- **Customer Favorites:** Customer-isolated wishlist persistence in `favorites` with duplicate key protection (`userId + equipmentId`) and `$lookup` hydration.
+- **Rental Booking & Availability System:** UTC inclusive date range validation, Daily/Weekly/Monthly server-side pricing, overlap quantity checking across `bookings` + active unexpired `bookingIntents`, and MongoDB multi-document transaction reservations.
+- **Stripe Checkout & Verified Webhooks:** Server-derived Stripe Hosted Checkout sessions (`POST /api/payments/create-checkout-session`), binary-raw webhook verification (`POST /api/payments/webhook`), atomic MongoDB finalization (`bookings` + `payments` + `stripeWebhookEvents`), and read-only session verification (`GET /api/payments/session/:sessionId`).
+- **Rental Management APIs:** Role-isolated rental listing and details for Customers (`GET /api/bookings/my`, `GET /api/bookings/:id`), Owners (`GET /api/owner/rentals`, `GET /api/owner/rentals/:id`), and Admins (`GET /api/admin/rentals`, `GET /api/admin/rentals/:id`).
+- **Admin Equipment Moderation & Management:** Platform-wide equipment search/filter/pagination, approve/reject endpoints with audit trail (`approvalHistory`, `reviewedBy`, `reviewedAt`, `rejectionReason`), catalog editing, and history-safe archival (`isDeleted: true`).
+- **Admin & Owner Dashboard Analytics:** MongoDB `$facet`/`$group` aggregation pipelines reporting all-time KPIs, deduplicated paid revenue/earnings, UTC calendar-month trends (`3m`, `6m`, `12m`), approval breakdowns, and Owner top-5 equipment performance.
+- **Public Contact Inquiry API:** Rate-limited, validated contact form persistence (`POST /api/contact` -> `contactMessages` collection, default `status: "New"`).
+- **Optional Operational Automation:** Idempotent UTC booking completion cron job (`node-cron`) for elapsed paid bookings and non-blocking optional SMTP completion notifications (`nodemailer`).
+
+---
+
+## 3. Technology Stack
+
+- **Runtime:** Node.js (`>= 18.18.0`, ES Modules)
+- **Framework:** Express.js (`express`)
 - **Language:** JavaScript
-- **Database & Driver:** MongoDB via Official MongoDB Node.js Driver (`^7.x`)
-- **Authentication & Tokens:** Better Auth (`better-auth`, `@better-auth/mongo-adapter`, `better-auth/plugins` `jwt()`)
-- **Security & Middleware:** `helmet`, `cors`, `morgan`, `dotenv`, Better Auth rate limiting
-
-### Planned Integrations
-- **Authorization Middleware:** JWT verification & RBAC middleware (`verifyToken`, role guards — Commit 04)
-- **Payments:** Stripe Checkout & webhook verification (Commit 10)
-- **Media Hosting:** ImgBB API integration
+- **Database:** MongoDB via Official MongoDB Node.js Driver (`mongodb`)
+- **Authentication & Tokens:** Better Auth (`better-auth`) + MongoDB Adapter (`@better-auth/mongo-adapter`) + JWT (`jose` & Better Auth `jwt()` plugin)
+- **Payments:** Stripe (`stripe`)
+- **Image Upload & Hosting:** Multer (`multer`) + server-side ImgBB API integration
+- **Scheduling & Email (Optional Features):** `node-cron` + `nodemailer`
+- **Security & Middleware:** `helmet`, `cors`, custom sliding-window rate limiter, `morgan`, `dotenv`
 
 ---
 
-## Installation
+## 4. Installed npm Packages
 
-Install backend dependencies from the `server` directory:
+Packages listed directly in `package.json`:
+
+| Package | Version Range | Purpose |
+| --- | --- | --- |
+| `@better-auth/mongo-adapter` | `^1.7.27` | Connects Better Auth to the shared MongoDB database (`users`, `sessions`, `accounts`, `verifications`, `jwks`) |
+| `better-auth` | `^1.7.27` | Handles registration, email/password & Google OAuth login, sessions, and JWT/JWKS plugin endpoints |
+| `cors` | `^2.8.6` | Enforces exact origin allowlists with `credentials: true` |
+| `dotenv` | `^16.5.0` | Loads environment variables from `.env` in local development |
+| `express` | `^5.1.0` | Core HTTP server and modular REST API routing |
+| `helmet` | `^8.1.0` | Sets defensive HTTP security headers |
+| `jose` | `^6.2.18` | Verifies asymmetric Better Auth JWT signatures against remote JWKS keys |
+| `mongodb` | `^7.9.1` | Official MongoDB driver for connection pooling, queries, indexes, aggregations, and transactions |
+| `morgan` | `^1.10.0` | Structured HTTP request logging (`dev` / `combined`) |
+| `multer` | `^2.5.0` | Parses `multipart/form-data` image uploads into memory buffers with size/file caps |
+| `node-cron` | `^4.6.0` | Schedules the optional daily UTC completed-rental sweep job |
+| `nodemailer` | `^10.6.1` | Optional SMTP client for automated completion notifications when `MAIL_*` is configured |
+| `stripe` | `^23.2.0` | Stripe Checkout Session creation, retrieval, currency checks, and webhook signature construction |
+| `nodemon` (devDependency) | `^3.1.9` | Hot-reloads local development server (`npm run dev`) |
+
+---
+
+## 5. Server Repository
+
+- **GitHub Repository:** https://github.com/iRfANhAiDeRABiR/b14-A-009-server.git
+
+---
+
+## 6. Live API URL
+
+- **Status:** Not deployed yet.
+- Configure your production host domain in `BETTER_AUTH_URL`, `BETTER_AUTH_JWKS_URL`, `BETTER_AUTH_ISSUER`, and `BETTER_AUTH_AUDIENCE`, then verify `/api/health` and `/api/health/ready` after deployment.
+
+---
+
+## 7. Installation
 
 ```bash
+git clone https://github.com/iRfANhAiDeRABiR/b14-A-009-server.git
+cd b14-A-009-server
 npm install
 ```
 
 ---
 
-## Environment Setup
+## 8. Environment Setup
 
-Copy `.env.example` to `.env` (never commit `.env` or real MongoDB credentials):
+Copy `.env.example` to `.env` before starting the server locally. Never commit `.env` or real secrets.
 
 ```bash
 cp .env.example .env
 ```
 
-Required variables for Commit 02 startup:
+Every variable actually read by `server/src/` (`env.js`, `authHelpers.js`, `stripe.js`, `imageUpload.service.js`, `mailer.js`, `seedAdmin.js`):
 
-- `NODE_ENV` — Runtime mode (`development`, `production`, or `test`)
-- `PORT` — HTTP listener port (default `5000`)
-- `CLIENT_URL` — Primary frontend URL (default `http://localhost:3000`)
-- `CORS_ORIGINS` — Comma-separated allowed browser origins (never `*` with credentials)
-- `MONGODB_URI` — MongoDB connection string (`mongodb://...` or `mongodb+srv://...`)
-- `DB_NAME` — Target MongoDB database name (for example `gearnest`)
-
-Planned placeholders (`BETTER_AUTH_*`, `GOOGLE_CLIENT_*`, `STRIPE_*`, `IMGBB_API_KEY`) remain optional until their respective milestones.
-
----
-
-## Database Connection Architecture
-
-- Implemented in `src/config/db.js` using a singleton `MongoClient` + `Db` instance shared across all models and endpoints.
-- `connectDB()` prevents duplicate connections on concurrent calls, verifies connectivity via `{ ping: 1 }`, and redacts connection-string credentials from logs and error messages.
-- `server.js` connects to MongoDB and initializes collections and indexes before opening the HTTP listener.
-- Graceful shutdown (`SIGINT` / `SIGTERM`) closes the HTTP listener for active requests first before closing MongoDB via `closeDB()`.
-
----
-
-## Collections & Data Models
-
-- **`users`**: Shared with Better Auth (`usePlural: true`) including `name`, `email`, `emailVerified`, `image`, `phone`, `address`, `role` (`Customer` | `Owner` | `Admin`, defaulting to `Customer`), `createdAt`, `updatedAt`.
-- **`equipment`**: Equipment catalog documents with `status` (`Pending` | `Approved` | `Rejected`, defaulting to `Pending`), categories, rental types (`Daily` | `Weekly` | `Monthly`), `rentalPrice > 0`, integer `availableQuantity >= 0`, `ownerId` preserving Better Auth ID types.
-- **`bookings`**: Reservation records referencing `customerId`, `ownerId`, and `equipmentId`, `Date` start/end dates (`startDate <= endDate`), positive integer `quantity`, monetary totals (`totalAmount`, `currency`), `paymentStatus`, and `bookingStatus`.
-- **`favorites`**: Customer wishlist associations (`userId`, `equipmentId`, `createdAt`) protected against duplicates.
-- **`payments`**: Server-managed payment transaction tracking referencing `bookingId`, `customerId`, `ownerId`, `equipmentId`, Stripe references, and `amount` (major units rounded to 2 decimals; `toMinorUnits()` converts safely to integer minor units for Stripe) without storing card details.
-- **`contactMessages`**: Contact inquiry records defaulting status to `New`.
-- **`stripeWebhookEvents`**: Future webhook idempotency tracking keyed uniquely on `stripeEventId`.
-
----
-
-## Database Indexes
-
-Initialized idempotently on startup via `ensureDatabaseCollectionsAndIndexes()` in `src/config/dbIndexes.js`:
-
-- `users`: Unique index on `email` (`users_email_unique`, Better Auth compatible), index on `role`.
-- `equipment`: Indexes on `ownerId`, `status`, `category`, `location`, `rentalPrice`, `createdAt`, plus text index (`name`, `category`, `location`).
-- `bookings`: Indexes on `customerId`, `ownerId`, `equipmentId`, `bookingStatus`, `paymentStatus`, `createdAt`, and availability query index `(equipmentId, bookingStatus, startDate, endDate)`.
-- `favorites`: Unique compound index on `(userId, equipmentId)` and `(userId, createdAt)`.
-- `payments`: Indexes on `bookingId`, `customerId`, `ownerId`, `status`, plus unique partial string indexes on `stripeCheckoutSessionId` and `stripePaymentIntentId`.
-- `contactMessages`: Indexes on `createdAt` and `status`.
-- `stripeWebhookEvents`: Unique index on `stripeEventId`.
-
----
-
-## API Health & Readiness Endpoints
-
-- **Root Endpoint (`GET /`)**: HTTP `200` — `{ "success": true, "message": "Welcome to GearNest API" }`
-- **Liveness Endpoint (`GET /api/health`)**: HTTP `200` confirming the Express process is running independently of database state.
-- **Readiness Endpoint (`GET /api/health/ready`)**:
-  - Connected: HTTP `200` `{ "success": true, "message": "GearNest database is ready", "data": { "service": "GearNest API", "database": "connected" } }`
-  - Unavailable: HTTP `503` `{ "success": false, "message": "GearNest database is unavailable", "error": null }`
-
----
-
-## Authentication & Frontend Integration (Better Auth + JWT)
-
-Authentication is powered by Better Auth (`src/config/auth.js`) backed by `@better-auth/mongo-adapter` (`usePlural: true`, sharing the `users` collection cleanly with `sessions`, `accounts`, `verifications`, and `jwks` managed by Better Auth) and the official `jwt()` plugin (`better-auth/plugins`).
-
-- **Express Handler Order:** `/api/auth/*splat` is mounted via `toNodeHandler(auth)` in `src/app.js` **after** `cors(corsOptions)` and **strictly before** `express.json()` so Better Auth receives untouched request streams.
-- **Better Auth Base URL & Path:** Configured from `BETTER_AUTH_URL` (local default: `http://localhost:5000`), mounted at `/api/auth`.
-- **Token Issuer & Audience:** Both `issuer` and `audience` match the configured `BETTER_AUTH_URL`.
-- **Roles & Signup Policy:** User `role` (`Customer`, `Owner`, `Admin`) is configured with `input: false` and enforced unconditionally via `databaseHooks.user.create.before` so every public email signup and Google login starts with `role: "Customer"`. Email verification and password reset flows are disabled per platform requirements.
-- **Password Complexity:** Minimum `6` characters, at least `1` uppercase letter (`A-Z`), and at least `1` lowercase letter (`a-z`), enforced server-side in Better Auth `hooks.before` on `/api/auth/sign-up/email`.
-- **Auth Rate Limiting:** Better Auth rate-limiting protects `/api/auth/sign-in/email`, `/api/auth/sign-up/email`, and `/api/auth/sign-in/social` with sensible brute-force thresholds without blocking normal testing.
-
-### Authentication Endpoints
-
-| Action | Method & Path | Notes |
+| Variable | Required? | Purpose & Notes |
 | --- | --- | --- |
-| Email Registration | `POST /api/auth/sign-up/email` | Requires `name`, `email`, `password` (>= 6 chars, upper + lower); optional `image` HTTP/HTTPS URL. Always assigns `role: "Customer"`. |
-| Email Login | `POST /api/auth/sign-in/email` | Authenticates user and sets secure session cookie. |
-| Google Social Login | `POST /api/auth/sign-in/social` | Configured when `GOOGLE_CLIENT_ID` & `GOOGLE_CLIENT_SECRET` are set. |
-| Get Active Session | `GET /api/auth/get-session` | Returns authenticated session and user (including `role`). |
-| Logout | `POST /api/auth/sign-out` | Clears active session and cookie. |
-| Mint Signed JWT | `GET /api/auth/token` | Returns a signed JWT (`15m` TTL) for an authenticated session via the Better Auth JWT plugin. |
-| Public Verification Keys | `GET /api/auth/jwks` | Exposes public JWK set (private keys are never exposed). |
-
-### Google OAuth Redirect / Callback URI
-
-Configure the authorized redirect URI in Google Cloud Console as:
-
-- **Development:** `http://localhost:5000/api/auth/callback/google`
-- **Production:** `${BETTER_AUTH_URL}/api/auth/callback/google` (e.g., `https://api.yourdomain.com/api/auth/callback/google`)
-
-### Required Frontend Client Configuration (`better-auth/react`)
-
-- Configure the Next.js Better Auth client (`createAuthClient`) with `baseURL: process.env.NEXT_PUBLIC_API_BASE_URL`, `basePath: "/api/auth"`, `plugins: [jwtClient()]`, and `fetchOptions: { credentials: "include" }`.
-- Ensure the frontend origin is included in `CLIENT_URL` and `CORS_ORIGINS` (exact origin URLs; never combine `"*"` with `credentials: true`).
-- In HTTPS production deployments where frontend and backend use separate hostnames, cross-origin cookies automatically use `SameSite=None; Secure; HttpOnly`; same-site/local setups retain `SameSite=Lax; HttpOnly`.
-- Retrieve JWT bearer tokens strictly via the official Better Auth client (`authClient.token()`), never by signing tokens in client code.
-
----
-
-## JWT Verification & Role-Based Access Control (Commit 04)
-
-Protected API routes verify Better Auth JWTs cryptographically using `jose` (`createRemoteJWKSet` + `jwtVerify`) against the Better Auth JWKS endpoint and resolve the user's **current** database role from MongoDB (`users`) on every request.
-
-- **Authorization Header:** Clients send `Authorization: Bearer <ACCESS_TOKEN>`.
-- **JWKS & Key Rotation:** `src/config/jwks.js` reuses a cached `createRemoteJWKSet()` resolver targeting `BETTER_AUTH_JWKS_URL` (default: `${BETTER_AUTH_URL}/api/auth/jwks`). Unknown or rotated `kid` keys trigger automatic keyset refresh; if JWKS is unavailable, verification fails closed (`503`) and never accepts unverified tokens.
-- **Claims & Algorithm Validation:** Validates cryptographic signature, `iss` (`BETTER_AUTH_ISSUER`), `aud` (`BETTER_AUTH_AUDIENCE`), `exp`, and required `sub`, permitting only asymmetric algorithms (`EdDSA`, `ES256`, `RS256`) and rejecting `alg=none` or `HS256`.
-- **Fresh Database User Lookup:** `verifyToken` queries MongoDB `users` (supporting both Better Auth `ObjectId` and string identifiers without assuming `_id` format) to verify account existence, reject disabled/suspended accounts, and read the latest `role` directly from MongoDB so stale JWTs cannot retain revoked privileges.
-
-### Middleware Execution Order & Exports
-
-1. `verifyToken` (`src/middleware/verifyToken.js`) — validates Bearer JWT + current MongoDB user and attaches `req.auth` and sanitized `req.user` (`{ id, name, email, role, image }`, zero password hashes).
-2. `verifyRenter` (`src/middleware/verifyRoles.js`) — authorizes canonical database role `Customer`.
-3. `verifyOwner` (`src/middleware/verifyRoles.js`) — authorizes canonical database role `Owner`.
-4. `verifyAdmin` (`src/middleware/verifyRoles.js`) — authorizes canonical database role `Admin`.
-
-```js
-// Protected route execution chain
-router.get("/owner-data", verifyToken, verifyOwner, controller);
-```
-
-### Protected Identity Endpoint
-
-- **`GET /api/protected/me`** (`verifyToken`): Returns HTTP `200` with `{ "success": true, "data": { "id", "name", "email", "role", "image" } }` for authenticated callers.
-
-### Standardized Auth Error Responses
-
-- **HTTP `401` Unauthorized:**
-  - Missing/empty token: `{ "success": false, "message": "Authentication required" }`
-  - Malformed/invalid/wrong-claim token: `{ "success": false, "message": "Invalid or expired access token" }`
-  - Expired token: `{ "success": false, "message": "Your session has expired. Please log in again." }`
-  - Deleted/missing DB user: `{ "success": false, "message": "Authenticated user not found" }`
-- **HTTP `403` Forbidden:**
-  - Missing/invalid DB role: `{ "success": false, "message": "Your account does not have a valid role" }`
-  - Role denied (`verifyRenter` / `verifyOwner` / `verifyAdmin`): `{ "success": false, "message": "Customer access required" }` (or `"Owner access required"` / `"Admin access required"`)
-
-### Resource Ownership Security Rules
-
-- Role authorization alone does not establish resource access. Controllers must verify actual database ownership against verified `req.user.id` (e.g., via `isResourceOwner(record.ownerId, req)`) and must never trust `req.body.userId`, `req.body.ownerId`, or `req.query.ownerId` for authorization.
+| `NODE_ENV` | Recommended | `development`, `production`, or `test` |
+| `PORT` | Recommended | Dynamic HTTP listener port (default `5000`; set automatically by cloud hosts) |
+| `JSON_BODY_LIMIT` | Optional | Express JSON/URL-encoded body limit (default `100kb`) |
+| `CLIENT_URL` | Required for frontend/Stripe | Exact frontend origin (must use `https://` when `NODE_ENV=production`, default `http://localhost:3000` in dev) |
+| `CORS_ORIGINS` | Required for CORS | Comma-separated exact allowed frontend origins (wildcard `*` forbidden with credentials) |
+| `MONGODB_URI` | Required | MongoDB Atlas / MongoDB connection string (`mongodb://` or `mongodb+srv://`) |
+| `DB_NAME` | Required | Target database name (e.g., `gearnest`) |
+| `MONGODB_TRANSACTIONS` | Optional | Multi-document transaction flag (default `true`; replica set required for bookings/webhooks) |
+| `DB_CONNECT_TIMEOUT_MS` | Optional | Initial MongoDB connect timeout ms (default `10000`) |
+| `DB_SERVER_SELECTION_TIMEOUT_MS` | Optional | Server selection timeout ms (default `5000`) |
+| `DB_SOCKET_TIMEOUT_MS` | Optional | Socket timeout ms (default `20000`) |
+| `BETTER_AUTH_SECRET` | Required | Signing secret (`>= 32` chars recommended/required in production) |
+| `BETTER_AUTH_URL` | Required in prod | Public base URL of this API server (default `http://localhost:${PORT}` in dev) |
+| `BETTER_AUTH_JWKS_URL` | Optional | Overrides `${BETTER_AUTH_URL}/api/auth/jwks` |
+| `BETTER_AUTH_ISSUER` | Optional | Overrides expected JWT `iss` (defaults to `BETTER_AUTH_URL`) |
+| `BETTER_AUTH_AUDIENCE` | Optional | Overrides expected JWT `aud` (defaults to `BETTER_AUTH_URL`) |
+| `AUTH_RATE_LIMIT` | Optional | Set `false` to disable Better Auth built-in limiter locally if needed |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional (Google OAuth) | Enables Google OAuth when both are set; skipped cleanly when omitted |
+| `STRIPE_SECRET_KEY` | Required for Checkout | Server Stripe key (`sk_test_...` / `sk_live_...` / `rk_...`) |
+| `STRIPE_WEBHOOK_SECRET` | Required for Webhooks | Stripe webhook endpoint signing secret (`whsec_...`) |
+| `STRIPE_CURRENCY` | Required for Checkout | 3-letter ISO currency (e.g., `bdt`); validated against connected Stripe account |
+| `STRIPE_CHECKOUT_EXPIRE_MINUTES` | Optional | Checkout session expiration in `[30..1440]` minutes (default `30`) |
+| `BOOKING_HOLD_MINUTES` | Optional | Pending reservation hold duration in `[1..1440]` minutes (default `10`) |
+| `IMGBB_API_KEY` | Required for Image Upload | ImgBB server-side upload key; kept strictly server-side |
+| `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Bootstrap CLI only | Used once by `npm run seed:admin` to provision initial Admin safely |
+| `ENABLE_BOOKING_CRON` | Optional | Set `false` to disable automatic booking completion scheduler (default `true`, off in tests) |
+| `BOOKING_COMPLETION_CRON` | Optional | UTC cron expression (default `5 0 * * *`) |
+| `MAIL_HOST`, `MAIL_PORT`, `MAIL_SECURE`, `MAIL_USER`, `MAIL_PASSWORD`, `MAIL_FROM` | Optional (SMTP) | Enables completion email notifications; skipped gracefully without blocking APIs when omitted |
 
 ---
 
-## User Profile & Admin User Governance APIs (Commit 05)
+## 9. Database Configuration
 
-All routes below require a valid Better Auth Bearer token (`Authorization: Bearer <ACCESS_TOKEN>`) verified via `verifyToken`. Administrative endpoints additionally enforce `verifyAdmin` (`role === "Admin"`). Never exposes password hashes, session tokens, or OAuth secrets.
-
-| Method & Endpoint | Middleware | Purpose |
-| --- | --- | --- |
-| `GET /api/users/me` | `verifyToken` | Retrieve authenticated user's profile (`id` sourced from `req.user.id`). |
-| `PATCH /api/users/me` | `verifyToken` | Update allowlisted profile fields (`name`, `image` / `photoURL`, `phone`, `address`). Strictly rejects `role`, `email`, `emailVerified`, `password`, `userId`, or unknown fields (`400`). |
-| `GET /api/admin/users` | `verifyToken`, `verifyAdmin` | Search (`name` / `email` escaped regex), filter (`role`: `all` \| `Customer` \| `Owner` \| `Admin`), sort (`newest`, `oldest`, `name_asc`, `name_desc`), and paginate (`page`, `limit` max `50`) users. |
-| `GET /api/admin/users/:id` | `verifyToken`, `verifyAdmin` | Retrieve safe profile details and optional `accountStatus` for a selected user (`404` when absent). |
-| `PATCH /api/admin/users/:id/role` | `verifyToken`, `verifyAdmin` | Update a user's canonical role (`Customer`, `Owner`, `Admin`). Prevents self-role changes and immediately enforces the new role on subsequent `verifyToken` checks. |
-
----
-
-## Equipment Management & Image Upload APIs (Commit 06)
-
-- **Allowed Categories:** `Construction Equipment`, `Photography Equipment`, `Vehicles & Transportation`, `Agriculture Equipment`, `Electronics`, `Event Equipment`
-- **Allowed Rental Types:** `Daily`, `Weekly`, `Monthly`
-- **Approval Statuses:** `Pending` (forced default on Owner creation), `Approved` (eligible for public catalog), `Rejected`
-- **ImgBB Environment Variable:** Configure `IMGBB_API_KEY` solely in `server/.env`; never expose it to the frontend or API responses.
-
-| Method & Endpoint | Access / Middleware | Description |
-| --- | --- | --- |
-| `GET /api/equipment` | Public | Dynamic search, filter, sort & pagination across `Approved` equipment only (see query specification below). |
-| `GET /api/equipment/featured` | Public | Returns newest `Approved` items via MongoDB `.limit(safeLimit)` (default `6`, maximum `12`). |
-| `GET /api/equipment/my` | `verifyToken`, `verifyOwner` | Lists the authenticated Owner's `Pending`, `Approved`, and `Rejected` listings (`page`, `limit`, optional `status`) plus status counts. |
-| `POST /api/equipment` | `verifyToken`, `verifyOwner` | Submits new equipment; validates all 12 fields (`rentalPrice > 0`, integer `availableQuantity >= 1`, HTTP/HTTPS `image`), assigns `ownerId` from `req.user.id`, forces `status: "Pending"`, and rejects spoofed `ownerId`/`status`. |
-| `GET /api/equipment/:id` | `verifyToken` | Returns item details with safe owner fields. Customers and other users view `Approved` items only (`404` otherwise); Owners can inspect their own `Pending`/`Rejected` items. Admin full review is scheduled for Commit 13. |
-| `PATCH /api/equipment/:id` | `verifyToken`, `verifyOwner` | Updates editable fields of equipment owned by `req.user.id` (`403` cross-owner). Rejects attempts to change `ownerId`, `status`, or unknown fields (`400`). |
-| `DELETE /api/equipment/:id` | `verifyToken`, `verifyOwner` | Deletes unbooked equipment owned by `req.user.id` (`403` cross-owner) and removes orphaned favorites. Blocks deletion (`409`) if associated bookings or payments exist. |
-| `POST /api/uploads/equipment-image` | `verifyToken`, `verifyOwner`, `upload` | Accepts `multipart/form-data` (`image`, max `5 MB`, JPG/JPEG/PNG/WEBP verified by MIME, extension, and binary file signature) and proxies upload to ImgBB returning `{ url, deleteUrl }`. |
-
-### Public Catalog Search, Filtering, Sorting & Pagination (`GET /api/equipment` — Commit 07)
-
-Returns `Approved` equipment only (client `status` parameters cannot override public approval visibility) and executes search, filters, sorting, and pagination directly against MongoDB:
-
-- **`search`:** Case-insensitive regex-escaped substring match (`$or`) across `name`, `title` (if present), `location`, and `category` (max `120` chars). Note: unanchored `$regex` preserves partial substring matching cleanly while the collection retains compound `status`/filter/sort indexes and the `equipment_search_text_idx` text index.
-- **`category`:** `all` (or omitted) or one of the 6 canonical categories (`400 Invalid equipment category` otherwise).
-- **`rentalType`:** `all` (or omitted) or `Daily` | `Weekly` | `Monthly` (`400 Invalid rental type` otherwise).
-- **`minPrice`, `maxPrice`:** Non-negative finite numeric bounds (`$gte` / `$lte`, rejects `NaN`, `Infinity`, negatives, and `minPrice > maxPrice` with `400 Invalid price range`).
-- **`availability`:** `all` (or omitted) | `available` (`availableQuantity > 0`) | `unavailable` (`availableQuantity <= 0` or missing/null legacy quantity; `400 Invalid availability filter` otherwise).
-- **`sort`:** `newest` (default, `{ createdAt: -1, _id: -1 }`), `price_asc` (`{ rentalPrice: 1, _id: 1 }`), `price_desc` (`{ rentalPrice: -1, _id: 1 }`), `featured` (`{ createdAt: -1, _id: -1 }` fallback; `400 Invalid sorting option` otherwise).
-- **`page`, `limit`:** Positive integers defaulting to `page=1`, `limit=9`, maximum `limit=50` (`400 Invalid pagination parameters` otherwise). Returns `{ success: true, message, data, pagination: { currentPage, limit, totalItems, totalPages } }` (`"No matching equipment found"` when `data` is empty).
-
-Example queries:
-
-```text
-GET /api/equipment?search=excavator
-GET /api/equipment?category=Construction%20Equipment
-GET /api/equipment?rentalType=Daily
-GET /api/equipment?minPrice=1000&maxPrice=10000
-GET /api/equipment?availability=available
-GET /api/equipment?sort=price_asc
-GET /api/equipment?page=2&limit=9
-GET /api/equipment?search=excavator&category=Construction%20Equipment&rentalType=Daily&minPrice=3000&maxPrice=15000&availability=available&sort=price_asc&page=1&limit=9
-```
+- **Singleton Pool:** `src/config/db.js` shares one `MongoClient` (`maxPoolSize: 20`, `minPoolSize: 2`, Stable API v1 `strict: false` for `$text` queries) across Better Auth and all REST modules.
+- **Core Collections:** `users`, `equipment`, `bookings`, `bookingIntents`, `favorites`, `payments`, `contactMessages`, `stripeWebhookEvents` (plus Better Auth auth collections `sessions`, `accounts`, `verifications`, `jwks` sharing `users` via `usePlural: true`).
+- **Monetary & Date Convention:** Prices and payment `amount` values are stored rounded to 2 decimals in `DEFAULT_CURRENCY` (`BDT`), with integer `amountMinor` stored alongside `payments`; calendar booking `startDate` / `endDate` dates are normalized UTC midnights (`YYYY-MM-DDT00:00:00.000Z`).
+- **Indexes (`src/config/dbIndexes.js`):**
+  - `users`: unique `{ email: 1 }`, `{ role: 1 }`, sparse `{ id: 1 }`.
+  - `equipment`: `{ ownerId: 1 }`, `{ status: 1 }`, `{ category: 1 }`, `{ location: 1 }`, `{ rentalPrice: 1 }`, `{ createdAt: -1 }`, `{ rentalType: 1 }`, `{ availableQuantity: 1 }`, compound catalog/moderation/availability indexes, and text index `{ name: "text", category: "text", location: "text" }`.
+  - `bookings`: `{ customerId: 1 }`, `{ ownerId: 1 }`, `{ equipmentId: 1 }`, `{ bookingStatus: 1 }`, `{ paymentStatus: 1 }`, `{ createdAt: -1 }`, `{ startDate: 1, _id: -1 }`, `{ endDate: 1, _id: -1 }`, compound customer/owner/availability indexes, and partial unique `{ bookingIntentId: 1 }`.
+  - `bookingIntents`: `{ customerId: 1, createdAt: -1 }`, availability index `{ equipmentId: 1, status: 1, expiresAt: 1, startDate: 1, endDate: 1 }`, TTL `{ expiresAt: 1 }` (`expireAfterSeconds: 0`), and partial unique `{ stripeCheckoutSessionId: 1 }`.
+  - `favorites`: unique `{ userId: 1, equipmentId: 1 }`, `{ userId: 1, createdAt: -1 }`.
+  - `payments`: `{ bookingId: 1 }`, `{ customerId: 1 }`, `{ ownerId: 1 }`, `{ status: 1 }`, `{ status: 1, paidAt: -1 }`, `{ ownerId: 1, status: 1, paidAt: -1 }`, `{ status: 1, createdAt: -1 }`, and partial unique indexes on `{ stripeCheckoutSessionId: 1 }` and `{ stripePaymentIntentId: 1 }`.
+  - `stripeWebhookEvents`: unique `{ stripeEventId: 1 }`.
+  - `contactMessages`: `{ createdAt: -1 }`, `{ status: 1 }`.
 
 ---
 
-## Customer Favorites APIs (Commit 08)
+## 10. Authentication
 
-All Favorites endpoints require **BOTH** `verifyToken` and `verifyRenter` (mapped strictly to the canonical database role `Customer`; `Owner` and `Admin` receive HTTP `403 "Customer access required"` and unauthenticated requests receive `401 "Authentication required"`).
-
-- **MongoDB Collection & Better Auth Identity:** Reuses `favorites` storing `{ userId, equipmentId, createdAt }`, where `userId` preserves the authenticated Better Auth user identifier (`req.user.id`) without coercing non-ObjectId IDs, `equipmentId` references an `equipment._id` ObjectId, and equipment documents are never duplicated inside `favorites`.
-- **Unique Compound Index:** Enforced by `favorites_user_equipment_unique` (`{ userId: 1, equipmentId: 1 }`, `unique: true`) plus `favorites_user_created_at_desc_idx` (`{ userId: 1, createdAt: -1 }`). Concurrent duplicate inserts catching `E11000` return a consistent idempotent response without inserting duplicate records.
-- **Equipment Approval & Data Isolation:** Only `Approved` equipment may be added to Favorites (`Pending` / `Rejected` items return HTTP `400`). Every query filters strictly by `req.user.id` — any `userId` supplied in request bodies, params, or query strings is ignored.
-- **Visibility & Orphan Handling (`GET /api/favorites`):** Uses MongoDB `$lookup` + `$unwind` (`preserveNullAndEmptyArrays: true`) + `$project`. Approved zero-quantity items remain visible as `"Unavailable"`; items later switched to `Pending`/`Rejected` return a minimal hidden placeholder so private details never leak; deleted equipment returns `"Unavailable (Removed)"` (`isDeleted: true`) so Customers can still remove stale favorites.
-
-| Method & Endpoint | Auth / Role | Request Body / Params | Success Response | Error Responses |
-| --- | --- | --- | --- | --- |
-| `POST /api/favorites` | `verifyToken`, `verifyRenter` (`Customer`) | JSON `{ "equipmentId": "<ObjectId>" }` | `201` (or idempotent `200` if already saved): `{ success: true, message, data: { equipmentId, isFavorite: true } }` | `400` (`Invalid equipment ID`, non-approved equipment, invalid body), `401`, `403`, `404` (`Equipment not found`) |
-| `GET /api/favorites` | `verifyToken`, `verifyRenter` (`Customer`) | Optional `?page=1&limit=12` (max `100`) | `200`: `{ success: true, message, data: [...] }` (sorted newest first; includes `pagination` when `page`/`limit` supplied) | `400` (`Invalid pagination parameters`), `401`, `403` |
-| `GET /api/favorites/:equipmentId/status` | `verifyToken`, `verifyRenter` (`Customer`) | Route param `:equipmentId` (`ObjectId`) | `200`: `{ success: true, message, data: { equipmentId, isFavorite: boolean } }` | `400` (`Invalid equipment ID`), `401`, `403` |
-| `DELETE /api/favorites/:equipmentId` | `verifyToken`, `verifyRenter` (`Customer`) | Route param `:equipmentId` (`ObjectId`) | `200`: `{ success: true, message: "Equipment removed from favorites successfully", data: { equipmentId, isFavorite: false } }` | `400` (`Invalid equipment ID`), `401`, `403`, `404` (`Favorite not found`) |
+- Mounted on `/api/auth/*splat` via `toNodeHandler(auth)` in `src/app.js` **strictly before** `express.json()`.
+- Password registration enforces `>= 6` characters, `>= 1` uppercase letter, and `>= 1` lowercase letter.
+- Email verification and password reset flows are intentionally omitted per assignment rules.
+- Public email registrations and Google OAuth logins unconditionally initialize `role: "Customer"` (`input: false` + database hook).
+- Better Auth `jwt()` plugin signs `15m` JWTs exposed at `GET /api/auth/token`, verified against public keys at `GET /api/auth/jwks`.
+- Cross-origin cookies switch dynamically to `SameSite=None; Secure; HttpOnly` only when running over HTTPS with cross-site frontend origins.
 
 ---
 
-## Rental Booking & Availability APIs (Commit 09)
+## 11. Roles and Authorization
 
-All Customer booking endpoints require **BOTH** `verifyToken` and `verifyRenter` (mapped strictly to canonical database role `Customer`).
+Supported canonical roles: **`Customer`**, **`Owner`**, **`Admin`**.
 
-- **Two-Stage Booking Lifecycle:**
-  1. **Stage 1 (Temporary Reservation — Commit 09):** `POST /api/bookings` validates dates/inventory/pricing inside a MongoDB multi-document transaction and creates a `PendingPayment` record inside `bookingIntents` (default hold `BOOKING_HOLD_MINUTES=10`). No finalized booking is created and payment is never marked `Paid` before payment verification.
-  2. **Stage 2 (Stripe Checkout & Finalization — Planned Commit 10/11):** Server Commit 10 creates the Stripe Checkout Session from `bookingIntentId`, and Server Commit 11 verifies Stripe webhook signatures before converting the reservation into finalized `bookings` and `payments` documents.
-- **Inclusive Calendar Dates (UTC):** `startDate` and `endDate` must follow strict `YYYY-MM-DD`, cannot be in the past (`startDate >= today UTC`), and cannot reverse (`endDate >= startDate`). Total inclusive days count both boundaries (`2026-11-24`..`2026-11-26` = `3` days).
-- **Authoritative Server Pricing Formula (BDT):** Calculated independently from MongoDB `equipment.rentalPrice` and `equipment.rentalType` using minor-unit integer arithmetic (`Total = rentalPrice × billableUnits × quantity`):
-  - `Daily`: `billableUnits = inclusiveDays`
-  - `Weekly`: `billableUnits = Math.ceil(inclusiveDays / 7)`
-  - `Monthly`: `billableUnits = Math.ceil(inclusiveDays / 30)`
-- **Overlap Availability & Cleanup:** Overlaps match `existing.startDate <= requested.endDate && existing.endDate >= requested.startDate`, summing non-cancelled finalized `bookings` plus unexpired `bookingIntents` (`status: "PendingPayment"` AND explicit `expiresAt > now` check, never relying solely on asynchronous MongoDB TTL cleanup `booking_intents_expires_at_ttl_idx`).
-- **Concurrency & Replica Set Requirement:** `POST /api/bookings` requires a transaction-capable MongoDB deployment (replica set / Atlas / `MONGODB_TRANSACTIONS=true`). Inside `session.withTransaction`, the server increments `reservationVersion` on the `equipment` document to serialize overlapping requests via MongoDB write conflicts and retries; standalone MongoDB instances reject safely with HTTP `503` rather than falling back to unsafe non-transactional writes.
-- **Customer Data Isolation:** `customerId`, `ownerId`, `rentalPrice`, `totalAmount`, `billableUnits`, `paymentStatus`, `bookingStatus`, and `expiresAt` are always derived server-side from `req.user.id` and DB equipment records (tampered client values are rejected). `GET /api/bookings/my` and `GET /api/bookings/:id` expose finalized `bookings` belonging solely to `req.user.id` (never returning `bookingIntents` or payment secrets).
+Required middlewares:
 
-| Method & Endpoint | Auth / Role | Request / Query | Response Format | Error Responses |
-| --- | --- | --- | --- | --- |
-| `POST /api/bookings/check-availability` | `verifyToken`, `verifyRenter` (`Customer`) | `{ equipmentId, startDate, endDate, quantity }` | `200`: `{ success: true, data: { available, equipmentId, requestedQuantity, totalQuantity, reservedQuantity, remainingQuantity } }` | `400`, `401`, `403`, `404` (`Equipment not found`), `409` (`Not approved`) |
-| `POST /api/bookings` | `verifyToken`, `verifyRenter` (`Customer`) | `{ equipmentId, startDate, endDate, quantity, contactNumber, deliveryAddress, additionalNotes? }` | `201` (or idempotent `200`): `{ success: true, message, data: { bookingIntentId, equipmentId, equipmentName, startDate, endDate, quantity, rentalType, rentalPrice, billableUnits, totalAmount, currency: "BDT", status: "PendingPayment", expiresAt } }` | `400`, `401`, `403`, `404`, `409` (insufficient inventory / unapproved), `503` (transactions unavailable) |
-| `GET /api/bookings/my` | `verifyToken`, `verifyRenter` (`Customer`) | `?page=1&limit=10&bookingStatus=&paymentStatus=&search=` | `200`: `{ success: true, data: [...], pagination: { currentPage, limit, totalItems, totalPages } }` | `400`, `401`, `403` |
-| `GET /api/bookings/:id` | `verifyToken`, `verifyRenter` (`Customer`) | Route param `:id` (`ObjectId`) | `200`: `{ success: true, data: { _id, equipment, startDate, endDate, durationDays, quantity, rentalType, rentalPrice, totalAmount, paymentStatus, bookingStatus, transactionId, paidAt, contactNumber, deliveryAddress, additionalNotes } }` | `400` (`Invalid booking ID`), `401`, `403`, `404` (`Booking not found`) |
+1. **`verifyToken`** (`src/middleware/verifyToken.js`): Validates Bearer JWT signature/JWKS/`iss`/`aud`/`exp`/`sub`, looks up the user in MongoDB `users` (supporting both ObjectId and Better Auth string IDs), rejects deleted/banned/disabled accounts, and attaches the authoritative database role to `req.user` (preventing stale JWT privilege retention).
+2. **`verifyRenter`** (`src/middleware/verifyRoles.js`): Authorizes canonical database role `Customer`.
+3. **`verifyOwner`** (`src/middleware/verifyRoles.js`): Authorizes canonical database role `Owner`.
+4. **`verifyAdmin`** (`src/middleware/verifyRoles.js`): Authorizes canonical database role `Admin`.
+
+Controllers also enforce resource ownership separately (`req.user.id`), ignoring client-supplied `ownerId`, `customerId`, or `userId`.
 
 ---
 
-## Stripe Hosted Checkout Integration (Commit 10)
+## 12. API Documentation
 
-Initiates Stripe Hosted Checkout sessions from verified `bookingIntents` reservations. **Creating a Checkout Session does NOT confirm payment or create finalized bookings** — verified Stripe webhook processing (`POST /api/payments/webhook` in Server Commit 11) creates the final `bookings` and `payments` records and marks the reservation `"Converted"`.
+All JSON endpoints follow `{ "success": boolean, "message": string, "data"?: ..., "pagination"?: ..., "error"?: ... }`.
 
-- **Environment & Stripe Test Mode:** Uses singleton `stripe` SDK initialization via `STRIPE_SECRET_KEY` (use `sk_test_...` test keys in development; never expose keys to logs, API responses, or client bundles). Requires HTTPS `CLIENT_URL` in production.
-- **Currency & Account Eligibility (`STRIPE_CURRENCY`):** Explicitly configured (e.g., `STRIPE_CURRENCY=bdt`) without silent exchange-rate conversion. Before session creation, [stripe.js](src/config/stripe.js) verifies via `stripe.accounts.retrieve()` and `stripe.countrySpecs.retrieve()` that the connected Stripe account country supports the configured currency (`503` if ineligible).
-- **Currency Minor-Unit Conversion:** [currency.js](src/utils/currency.js) converts stored `totalAmount` using ISO decimal exponents (zero-decimal e.g. `jpy` = 0, two-decimal e.g. `bdt`/`usd` = 2 where ৳51,000 = `5100000` paisa, three-decimal e.g. `kwd` = 3) with integer rounding and Stripe min/max bounds checks.
-- **Expiration Sync & Compensating Cleanup:** Checkout sessions expire in `STRIPE_CHECKOUT_EXPIRE_MINUTES=30` (Stripe's `[30m, 24h]` window), and the associated `bookingIntent.expiresAt` is extended to `checkoutExpiresAt + 2 minutes` so inventory stays locked during Hosted Checkout. If DB persistence fails after creating a Stripe session, the server attempts immediate `stripe.checkout.sessions.expire()`.
-- **Idempotency & Concurrency:** An atomic MongoDB lease lock (`checkoutInProgressUntil`) prevents duplicate simultaneous Stripe calls, deterministic idempotency keys (`gearnest_checkout_<bookingIntentId>_attempt_<n>`) protect retries, and existing `open` unexpired Stripe sessions are reused seamlessly (`200`).
-- **Redirect URLs:** Strictly derived server-side from `CLIENT_URL` (no client redirect URLs accepted):
-  - Success: `${CLIENT_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`
-  - Cancel: `${CLIENT_URL}/payment/cancel?bookingIntentId=${bookingIntentId}`
-
-| Method & Endpoint | Auth / Role | Request Body | Response Format | Error Responses |
-| --- | --- | --- | --- | --- |
-| `POST /api/payments/create-checkout-session` | `verifyToken`, `verifyRenter` (`Customer`) | JSON `{ "bookingIntentId": "<ObjectId>" }` | `201` (or `200` on open session reuse): `{ success: true, message: "Stripe Checkout Session created successfully", data: { bookingIntentId, sessionId, checkoutUrl, expiresAt, currency, totalAmount } }` | `400` (`Invalid booking reservation` / tampered fields), `401`, `403` (`Customer access required`), `404` (`Booking reservation not found`), `409` (already processed / unapproved equipment), `410` (`Booking reservation has expired`), `503` (Stripe unavailable or unsupported account currency), `504` (timeout) |
-
----
-
-## Stripe Webhook Payment Confirmation & Status APIs (Commit 11)
-
-Payment confirmation occurs **exclusively** inside verified Stripe webhook processing — browser redirects to `/payment/success` and read-only status checks (`GET /api/payments/session/:sessionId`) never mark bookings as confirmed or payments as `Paid`.
-
-- **Webhook Route & Raw Body Security (`POST /api/payments/webhook`):** Mounted in [app.js](src/app.js) with `express.raw({ type: "application/json" })` **strictly before `express.json()`** so `stripe.webhooks.constructEvent(rawBody, signature, STRIPE_WEBHOOK_SECRET)` receives the unmodified binary `Buffer`. Rejects missing/invalid signatures, tampered bodies, pre-parsed JSON, and stale timestamps with HTTP `400` (`503` when `STRIPE_WEBHOOK_SECRET` is unconfigured). Uses Stripe cryptographic signatures instead of Customer JWT middleware.
-- **Supported Events & Delayed Payment Safety:**
-  - `checkout.session.completed` & `checkout.session.async_payment_succeeded`: Re-retrieves the authoritative Checkout Session and associated PaymentIntent directly from Stripe (`status === "complete"`, `payment_status === "paid"`, `paymentIntent.status === "succeeded"`), cross-checks `metadata.bookingIntentId`, `client_reference_id`, `customerId`, `ownerId`, `equipmentId`, currency, and minor-unit `amount_total`. If `checkout.session.completed` has `payment_status: "unpaid"`, finalization is deferred until `checkout.session.async_payment_succeeded`.
-  - `checkout.session.async_payment_failed`: Updates un-converted holds to `Failed`, releasing reserved quantity without affecting already-converted bookings.
-  - `checkout.session.expired`: Transitions open `PendingPayment` holds to `Expired` safely without reversing already-confirmed bookings.
-  - Unsupported event types: Audited safely and acknowledged with HTTP `200`.
-- **Atomic MongoDB Transaction & Unique Constraints:** [bookingFinalization.service.js](src/services/bookingFinalization.service.js) uses `session.withTransaction` (replica set required) to atomically: (1) claim `stripeWebhookEvents` (`stripe_webhook_events_event_id_unique`), (2) verify the reservation is unconverted, (3) insert the finalized `bookings` document (`paymentStatus: "Paid"`, `bookingStatus: "Confirmed"`, unique index `bookings_booking_intent_unique`), (4) insert the linked `payments` document (`stripeCheckoutSessionId` & `stripePaymentIntentId` unique indexes, `amount`, `amountMinor`, `paidAt`), (5) convert `bookingIntents` (`status: "Converted"`, `finalBookingId`, `paymentId`, removing TTL `expiresAt`), and (6) mark the webhook event `processed: true`. Transaction aborts roll back all steps and return HTTP `500` so Stripe retries cleanly.
-
-| Method & Endpoint | Auth / Role | Input | Response Format | Error Responses |
-| --- | --- | --- | --- | --- |
-| `POST /api/payments/webhook` | Stripe Signature (`stripe-signature` + `STRIPE_WEBHOOK_SECRET`) | Raw JSON `Buffer` (Stripe Event) | `200`: `{ success: true, received: true, message: "Webhook processed successfully" }` (or `"Webhook event already processed"`) | `400` (`Invalid Stripe webhook signature`), `500` (transient failure for Stripe retry), `503` (`Webhook configuration unavailable` / transaction requirement) |
-| `GET /api/payments/session/:sessionId` | `verifyToken`, `verifyRenter` (`Customer`) | Route param `:sessionId` (`cs_...`) | `200`: Confirmed (`bookingId`, `equipmentName`, `paymentStatus: "Paid"`, `bookingStatus: "Confirmed"`, `totalAmount`, `currency`, `transactionId`, `paidAt`, `verified: true`) or current DB state (`Pending`/`PendingPayment`/`Expired`/`Failed`) | `400` (`Invalid payment session ID`), `401`, `403` (`Customer access required`), `404` (`Payment session not found`) |
-
----
-
-## Customer, Owner & Admin Rental Management APIs (Commit 12)
-
-Provides role-isolated finalized rental listing and detail inspection across Customers, Owners, and Admins. **Temporary `bookingIntents` holds never appear** in these endpoints, and multi-attempt `payments` rows are aggregated cleanly as an array selecting the authoritative payment record without duplicating booking rows.
-
-- **Query Capabilities (`rentalQuery.validator.js`):**
-  - **`search`:** Case-insensitive escaped regex across equipment name/category and exact Booking ObjectId (`_id`), plus Customer name on Owner queries and both Customer & Owner names on Admin queries.
-  - **`bookingStatus`:** Exact canonical finalized statuses (`Pending`, `Confirmed`, `Active`, `Completed`, `Cancelled`; `PendingPayment` holds are rejected with `400`).
-  - **`paymentStatus`:** Stored database payment statuses (`Pending`, `Paid`, `Failed`, `Refunded`).
-  - **`sort`:** `newest` (default), `oldest`, `amount_asc`, `amount_desc`, `start_date`, `end_date` with deterministic `_id` secondary tie-breakers.
-  - **`page` / `limit`:** Server-side MongoDB `$skip` & `$limit` inside `$facet` (`page=1`, `limit=10`, max `limit=50`).
-- **Missing Transition Rule Note:** Because GearNest defines no manual Admin rental-status override workflow outside verified Stripe fulfillment and payment safety rules forbid altering payment states manually, `PATCH /api/admin/rentals/:id/status` is intentionally omitted to avoid inventing unverified status transitions.
-
-| Role & Endpoint | Middleware | Additional Filters | Returned Information & Isolation |
+### System & Health
+| Method | Endpoint | Auth | Response |
 | --- | --- | --- | --- |
-| `GET /api/bookings/my` | `verifyToken`, `verifyRenter` (`Customer`) | `search`, `bookingStatus`, `paymentStatus`, `sort`, `page`, `limit` | Scoped strictly to `req.user.id`; joins equipment + authoritative payment without exposing owner PII. |
-| `GET /api/bookings/:id` | `verifyToken`, `verifyRenter` (`Customer`) | Route param `:id` (`ObjectId`) | Detailed booking, equipment, delivery, and `transactionId`/`paidAt` (`404` across customers). |
-| `GET /api/owner/rentals` | `verifyToken`, `verifyOwner` (`Owner`) | `search`, `bookingStatus`, `paymentStatus`, `equipmentId`, `sort`, `page`, `limit` | Scoped strictly to bookings on equipment owned by `req.user.id`; joins customer (`name`, `email`, `image`), equipment, and KPI `summary`. |
-| `GET /api/owner/rentals/:id` | `verifyToken`, `verifyOwner` (`Owner`) | Route param `:id` (`ObjectId`) | Owner detail view including `contactNumber`, `deliveryAddress`, and `additionalNotes` (`404` cross-owner). |
-| `GET /api/admin/rentals` | `verifyToken`, `verifyAdmin` (`Admin`) | `search`, `bookingStatus`, `paymentStatus`, `equipmentId`, `customerId`, `ownerId`, `sort`, `page`, `limit` | Platform-wide finalized rentals joining Customer, Owner, Equipment, and Payment fields without password hashes or Stripe secrets. |
-| `GET /api/admin/rentals/:id` | `verifyToken`, `verifyAdmin` (`Admin`) | Route param `:id` (`ObjectId`) | Full safe reconciliation details (`stripeCheckoutSessionId`, `paymentIntentId`, `paidAt`, `refundStatus`, `equipment.location`, delivery info). |
+| `GET` | `/` | Public | `200`: `{ success: true, message: "Welcome to GearNest API" }` |
+| `GET` | `/api/health` | Public | `200`: `{ success: true, message, data: { service, status: "healthy", environment } }` |
+| `GET` | `/api/health/ready` | Public | `200` if MongoDB ping succeeds (`database: "connected"`), `503` otherwise |
 
----
-
-## Admin Equipment Management & Moderation APIs (Commit 13)
-
-Provides platform-wide moderation, editing, audit tracking, and history-safe archival/deletion exclusively for authenticated `Admin` accounts (`verifyToken` + `verifyAdmin`; Owners and Customers receive HTTP `403`).
-
-- **Moderation & Audit Fields:** Approving or rejecting equipment records `reviewedBy` (`req.user.id`), `reviewedAt`, `rejectionReason` (cleared to `null` on approval), and appends entries (`previousStatus`, `newStatus`, `reviewedBy`, `reviewedAt`, `rejectionReason`) to `approvalHistory`. Approval and rejection endpoints are idempotent on repeated identical state changes.
-- **Public & Owner Synchronization:** Approved listings become immediately eligible for public `GET /api/equipment` and `GET /api/equipment/featured`. Rejected listings disappear from public results while remaining visible on the Owner's `GET /api/equipment/my` view alongside `rejectionReason`.
-- **Update Allowlist:** `PATCH /api/admin/equipment/:id` validates strictly editable catalog fields (`name`, `description`, `category`, `location`, `rentalPrice`, `rentalType`, `availableQuantity`, `condition`, `brand`, `model`, `image`, `rentalTerms`) and rejects attempts to modify `ownerId`, `status`, `reviewedBy`, `reviewedAt`, or `approvalHistory` (`400`).
-- **History-Safe Deletion / Archival:** Equipment without bookings or payments is physically removed; equipment referenced by historical `bookings` or `payments` is soft-archived (`isDeleted: true`, `deletedAt`, `deletedBy`) so historical financial/rental records stay intact while the item disappears immediately from public, featured, Owner active, and Admin active listings, and related `favorites` are cleaned up.
-
-| Method & Endpoint | Auth / Role | Input / Query | Response & Behavior |
+### Authentication (Better Auth `/api/auth/*`)
+| Method | Endpoint | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET /api/admin/equipment` | `verifyToken`, `verifyAdmin` | `?search=&category=&status=&sort=&page=1&limit=10` (max `50`) | Lists non-archived equipment across `Pending`, `Approved`, `Rejected` sorted (`newest`, `oldest`, `price_asc`, `price_desc`) with safe owner info (`name`, `email`, `image`), pagination, and status `summary`. |
-| `GET /api/admin/equipment/:id` | `verifyToken`, `verifyAdmin` | Route param `:id` (`ObjectId`) | Full listing details including specifications, rental terms, owner info, and approval audit metadata (`404` when absent/archived). |
-| `PATCH /api/admin/equipment/:id/approve` | `verifyToken`, `verifyAdmin` | Route param `:id` | Sets `status: "Approved"`, clears `rejectionReason`, records reviewer audit trail. |
-| `PATCH /api/admin/equipment/:id/reject` | `verifyToken`, `verifyAdmin` | `{ "reason": "..." }` or `{ "rejectionReason": "..." }` (`3..500` chars) | Sets `status: "Rejected"`, stores trimmed `rejectionReason`, records reviewer audit trail. |
-| `PATCH /api/admin/equipment/:id` | `verifyToken`, `verifyAdmin` | Allowed editable equipment fields | Updates catalog metadata without altering `ownerId` or approval status (`400` on restricted fields). |
-| `DELETE /api/admin/equipment/:id` | `verifyToken`, `verifyAdmin` | Route param `:id` | Deletes unbooked equipment physically or soft-archives (`isDeleted: true`) booked/paid listings (`200` with `{ deleted, archived }`) while cleaning favorites. |
+| `POST` | `/api/auth/sign-up/email` | Public | Email/password signup (`Customer` role forced) |
+| `POST` | `/api/auth/sign-in/email` | Public | Email/password session login |
+| `POST` | `/api/auth/sign-in/social` | Public | Google OAuth initiation (when `GOOGLE_*` configured) |
+| `GET` | `/api/auth/callback/google` | Public (Google redirect) | Google OAuth callback handler |
+| `GET` | `/api/auth/get-session` | Session cookie | Returns active session & user |
+| `POST` | `/api/auth/sign-out` | Session cookie | Ends active session |
+| `GET` | `/api/auth/token` | Session cookie | Issues signed `15m` JWT access token |
+| `GET` | `/api/auth/jwks` | Public | Returns public verification keys (JWK Set) |
 
----
-
-## Admin & Owner Dashboard Analytics APIs (Commit 14)
-
-Provides database-backed dashboard KPIs, UTC calendar-month trend series, approval breakdowns, and top equipment metrics using MongoDB aggregation pipelines rather than fabricated statistics or in-memory full-table JavaScript scans.
-
-- **Period Filtering & Validation (`?period=3m|6m|12m`):** Defaults to `12m` when omitted and rejects unsupported values or MongoDB query operators with HTTP `400` (`"Invalid reporting period"`). All-time KPI counters (`totalUsers`, `totalEquipment`, `totalBookings`, `pendingApprovals`, `completedRentals`, `totalRevenue`, `totalListedEquipment`, `totalEarnings`) remain invariant across period selections while monthly arrays (`monthlyBookingData`, `monthlyRevenueData`, `monthlyEarningsData`, `monthlyRentalData`) cover strictly the requested UTC calendar-month window with zero-filled gaps.
-- **Currency & Payment Integrity:** Platform `totalRevenue` and Owner `totalEarnings` / `monthlyEarnings` aggregate authoritative `payments` records with `status: "Paid"`, exclude `Pending` / `Failed` / `Refunded` transactions, deduct partial `refundedAmount`, deduplicate repeat payment records per `bookingId` / Stripe transaction ID inside `$group`, and never mix major `amount` with `amountMinor` or invent unconfigured platform commission fees.
-
-| Role & Endpoint | Auth / Role | Query | Returned Metrics & Isolation |
+### Users & Profile
+| Method | Endpoint | Auth / Role | Request / Response |
 | --- | --- | --- | --- |
-| `GET /api/admin/analytics` | `verifyToken`, `verifyAdmin` | `?period=3m\|6m\|12m` (default `12m`) | Returns `totalUsers`, `totalEquipment` (excluding soft-archived), `totalBookings`, `pendingApprovals`, `completedRentals`, `totalRevenue`, `monthlyBookings`, `monthlyBookingData`, `monthlyRevenueData`, canonical `equipmentApprovalData`, and safe `recentActivity`. |
-| `GET /api/owner/analytics` | `verifyToken`, `verifyOwner` | `?period=3m\|6m\|12m` (default `12m`) | Derived strictly from verified `req.user.id`: returns `totalListedEquipment`, `completedRentals`, `totalEarnings`, `monthlyEarnings`, `grossBookingVolume`, `equipmentStatusBreakdown`, `monthlyEarningsData`, `monthlyRentalData`, top 5 `equipmentPerformance`, and 5 `recentRentals`. |
+| `GET` | `/api/protected/me` | `verifyToken` | Safe authenticated user claims (`id`, `name`, `email`, `role`, `image`) |
+| `GET` | `/api/users/me` | `verifyToken` | Full sanitized user profile (`phone`, `address`, `role`, etc.) |
+| `PATCH` | `/api/users/me` | `verifyToken` | Updates `name`, `image`/`photoURL`, `phone`, `address` (`400` on restricted fields like `role`) |
+
+### Equipment & Uploads
+| Method | Endpoint | Auth / Role | Query / Body / Response |
+| --- | --- | --- | --- |
+| `GET` | `/api/equipment` | Public | `?search=&category=&rentalType=&minPrice=&maxPrice=&availability=&sort=&page=1&limit=9` (`Approved` only) |
+| `GET` | `/api/equipment/featured` | Public | `?limit=6` (max `12`), newest `Approved` items via MongoDB `.limit()` |
+| `GET` | `/api/equipment/my` | `verifyToken`, `verifyOwner` | `?status=&page=1&limit=10`, Owner's own listings across all statuses + summary |
+| `POST` | `/api/equipment` | `verifyToken`, `verifyOwner` | Submits 12-field listing (`status: "Pending"` forced; `ownerId` from `req.user.id`) |
+| `GET` | `/api/equipment/:id` | `verifyToken` | Public-approved or owner's own item details (`404` for unauthorized unapproved items) |
+| `PATCH` | `/api/equipment/:id` | `verifyToken`, `verifyOwner` | Owner updates own editable catalog fields (`403` cross-owner, `400` restricted fields) |
+| `DELETE` | `/api/equipment/:id` | `verifyToken`, `verifyOwner` | Deletes unbooked owned listing (`409` when linked to bookings/payments) |
+| `POST` | `/api/uploads/equipment-image` | `verifyToken`, `verifyOwner` | `multipart/form-data` (`image`, `<= 5 MB`, JPG/JPEG/PNG/WEBP magic-byte check) -> `{ url, deleteUrl }` |
+
+### Favorites
+| Method | Endpoint | Auth / Role | Request / Response |
+| --- | --- | --- | --- |
+| `POST` | `/api/favorites` | `verifyToken`, `verifyRenter` | `{ equipmentId }` -> `201` (or `200` if already saved; `Approved` only) |
+| `GET` | `/api/favorites` | `verifyToken`, `verifyRenter` | `?page=&limit=`, Customer's hydrated wishlist (`$lookup`) |
+| `GET` | `/api/favorites/:equipmentId/status` | `verifyToken`, `verifyRenter` | `200` with `{ equipmentId, isFavorite }` |
+| `DELETE` | `/api/favorites/:equipmentId` | `verifyToken`, `verifyRenter` | `200` removing Customer's favorite (`404` if missing) |
+
+### Bookings
+| Method | Endpoint | Auth / Role | Query / Body / Response |
+| --- | --- | --- | --- |
+| `POST` | `/api/bookings/check-availability` | `verifyToken`, `verifyRenter` | `{ equipmentId, startDate, endDate, quantity }` -> `{ available, remainingQuantity, ... }` |
+| `POST` | `/api/bookings` | `verifyToken`, `verifyRenter` | `{ equipmentId, startDate, endDate, quantity, contactNumber, deliveryAddress, additionalNotes? }` -> `201` reservation hold in `bookingIntents` |
+| `GET` | `/api/bookings/my` | `verifyToken`, `verifyRenter` | `?search=&bookingStatus=&paymentStatus=&sort=&page=1&limit=10`, finalized Customer bookings |
+| `GET` | `/api/bookings/:id` | `verifyToken`, `verifyRenter` | Single Customer booking + safe transaction summary (`404` cross-customer) |
+
+### Payments & Stripe Webhooks
+| Method | Endpoint | Auth / Role | Input / Response |
+| --- | --- | --- | --- |
+| `POST` | `/api/payments/create-checkout-session` | `verifyToken`, `verifyRenter` | `{ bookingIntentId }` -> `201` (`{ sessionId, checkoutUrl, expiresAt, currency, totalAmount }`) |
+| `POST` | `/api/payments/webhook` | Stripe `stripe-signature` + raw `Buffer` | Verifies signature & Checkout Session, executes atomic finalization transaction |
+| `GET` | `/api/payments/session/:sessionId` | `verifyToken`, `verifyRenter` | Read-only payment/booking status inspection for authenticated reservation owner |
+
+### Owner Endpoints
+| Method | Endpoint | Auth / Role | Query / Response |
+| --- | --- | --- | --- |
+| `GET` | `/api/owner/rentals` | `verifyToken`, `verifyOwner` | `?search=&bookingStatus=&paymentStatus=&equipmentId=&sort=&page=1&limit=10`, Owner-scoped rentals + summary |
+| `GET` | `/api/owner/rentals/:id` | `verifyToken`, `verifyOwner` | Owner rental detail including delivery info (`404` cross-owner) |
+| `GET` | `/api/owner/analytics` | `verifyToken`, `verifyOwner` | `?period=3m\|6m\|12m` (`12m` default), Owner KPIs, earnings/rental monthly trends, top 5 equipment performance & recent rentals |
+
+### Admin Endpoints
+| Method | Endpoint | Auth / Role | Query / Body / Response |
+| --- | --- | --- | --- |
+| `GET` | `/api/admin/users` | `verifyToken`, `verifyAdmin` | `?search=&role=&sort=&page=1&limit=10` (max `50`) |
+| `GET` | `/api/admin/users/:id` | `verifyToken`, `verifyAdmin` | Single safe user profile (`404` when absent) |
+| `PATCH` | `/api/admin/users/:id/role` | `verifyToken`, `verifyAdmin` | `{ role: "Customer" \| "Owner" \| "Admin" }` (blocks self-role modification) |
+| `GET` | `/api/admin/equipment` | `verifyToken`, `verifyAdmin` | `?search=&category=&status=&sort=&page=1&limit=10` (max `50`), all statuses excluding soft-deleted |
+| `GET` | `/api/admin/equipment/:id` | `verifyToken`, `verifyAdmin` | Detailed catalog item + `approvalHistory` audit trail |
+| `PATCH` | `/api/admin/equipment/:id/approve` | `verifyToken`, `verifyAdmin` | Approves listing (`reviewedBy`, `reviewedAt`, clears `rejectionReason`) |
+| `PATCH` | `/api/admin/equipment/:id/reject` | `verifyToken`, `verifyAdmin` | `{ reason }` / `{ rejectionReason }` (`3..500` chars) -> rejects listing with audit entry |
+| `PATCH` | `/api/admin/equipment/:id` | `verifyToken`, `verifyAdmin` | Edits catalog metadata without altering `ownerId` or approval status |
+| `DELETE` | `/api/admin/equipment/:id` | `verifyToken`, `verifyAdmin` | Hard deletes unbooked items or soft-archives (`isDeleted: true`) booked/paid items |
+| `GET` | `/api/admin/rentals` | `verifyToken`, `verifyAdmin` | `?search=&bookingStatus=&paymentStatus=&equipmentId=&customerId=&ownerId=&sort=&page=1&limit=10` |
+| `GET` | `/api/admin/rentals/:id` | `verifyToken`, `verifyAdmin` | Full safe Admin rental & Stripe reconciliation summary |
+| `GET` | `/api/admin/analytics` | `verifyToken`, `verifyAdmin` | `?period=3m\|6m\|12m` (`12m` default), platform KPIs, UTC monthly series, approval breakdown & safe recent activity |
+
+### Public Contact Endpoint
+| Method | Endpoint | Auth / Rate Limit | Request / Response |
+| --- | --- | --- | --- |
+| `POST` | `/api/contact` | Public, 10 req / 15m per IP | `{ name, email, inquiryType, subject, message }` -> `201`: `{ success: true, message, data: { _id, inquiryType, status: "New", createdAt } }` |
 
 ---
 
-## Development, Testing & Production Scripts
+## 13. Stripe Integration
+
+- Configured in `src/config/stripe.js` and `src/services/stripeCheckout.service.js` / `src/services/stripeWebhook.service.js`.
+- Amounts are recalculated from MongoDB equipment pricing in integer minor units (`src/utils/currency.js`).
+- Before Checkout Session creation, `verifyStripeAccountCurrencyEligibility` verifies that the connected Stripe account country supports `STRIPE_CURRENCY` (e.g., `bdt`). **Important:** BDT (`bdt`) support depends on the connected Stripe account's country eligibility; unsupported combinations fail explicitly with `503 UNSUPPORTED_CURRENCY` rather than silently converting currency.
+- **Verification Rule:** Payment confirmation happens **solely** inside `POST /api/payments/webhook` using verified Stripe signatures (`stripe-signature` + raw Buffer), live Stripe session retrieval, PaymentIntent verification, unique idempotency events (`stripeWebhookEvents`), and an atomic MongoDB multi-document transaction (`bookingFinalization.service.js`). Use Stripe test-mode (`sk_test_...` / Stripe CLI) keys when testing locally.
+
+---
+
+## 14. Development
 
 ```bash
-# Development server (auto-reload with nodemon; requires valid MONGODB_URI, DB_NAME & BETTER_AUTH_SECRET in .env)
 npm run dev
+```
 
-# Production server start
+Runs `nodemon --watch src src/server.js` using `.env` configuration.
+
+---
+
+## 15. Production
+
+```bash
 npm start
+```
 
-# Run automated verification test suites (node:test)
+Runs `node src/server.js`, binds dynamically to `process.env.PORT`, configures `trust proxy = 1`, sets HTTP keep-alive/headers/request timeouts, disables `x-powered-by`, suppresses raw stack traces in error JSON responses, starts the optional UTC booking completion cron job (when `ENABLE_BOOKING_CRON` is not `false`), and gracefully drains HTTP & MongoDB connections on `SIGINT`/`SIGTERM`.
+
+---
+
+## 16. Deployment
+
+To deploy the server (e.g., Render, Railway, Fly.io, DigitalOcean, or VPS):
+
+1. Provision a transaction-capable **MongoDB Atlas replica set** (or self-hosted replica set — standalone MongoDB rejects multi-document booking/payment transactions with HTTP `503`).
+2. Set production environment variables (`NODE_ENV=production`, `PORT`, HTTPS `CLIENT_URL`, exact `CORS_ORIGINS`, `MONGODB_URI`, `DB_NAME`, `BETTER_AUTH_SECRET`, HTTPS `BETTER_AUTH_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CURRENCY`, `IMGBB_API_KEY`, and optional `GOOGLE_*` / `MAIL_*`).
+3. Configure Google Cloud Console authorized redirect URI: `${BETTER_AUTH_URL}/api/auth/callback/google` (if using Google OAuth).
+4. Register Stripe production webhook endpoint `${BETTER_AUTH_URL}/api/payments/webhook` subscribing to `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, and `checkout.session.expired`.
+5. Deploy using `npm start` and verify `GET /api/health` (`200`) and `GET /api/health/ready` (`200`).
+6. Run the controlled initial Admin bootstrap once from a trusted server/CI environment (do not expose over HTTP and do not commit credentials):
+   ```bash
+   ADMIN_NAME="Platform Admin" ADMIN_EMAIL="admin@yourdomain.com" ADMIN_PASSWORD="<StrongPassword>" npm run seed:admin
+   ```
+   - `seedAdmin.js` uses Better Auth's `auth.api.signUpEmail()` mechanism to store properly hashed credentials, then sets `role: "Admin"` solely for that new user.
+   - Re-running when the email already holds `Admin` is idempotent; attempting to bootstrap over an existing `Customer` or `Owner` account aborts safely without silent privilege escalation.
+
+---
+
+## 17. Testing
+
+```bash
+# Static syntax check across all files in src/ and tests/
+npm run check
+
+# Run full automated backend test suite (node:test)
 npm test
 
-# Static JavaScript syntax validation across src/ and tests/
-npm run check
+# Controlled initial Admin bootstrap CLI (requires live MongoDB + BETTER_AUTH_SECRET)
+npm run seed:admin
 ```
+
+---
+
+## 18. Known Limitations
+
+- **Live Production Deployment:** This repository contains no live production deployment URL yet (`Not deployed yet.`).
+- **Live Cloud Integration Verification:** While all automated test suites verify business logic, validation, JWKS/RBAC verification, MongoDB aggregations, Stripe Checkout/Webhook state machines, rate limiting, CORS, and optional cron/email behavior using isolated test doubles and in-memory HTTP servers, live MongoDB Atlas cluster execution (`.explain("executionStats")`), live ImgBB uploads, live Google OAuth browser consent, live Stripe test-mode charges against your connected account's `bdt` eligibility, and real SMTP delivery (`MAIL_*`) require real environment credentials to execute end-to-end.
+- **Replica Set Dependency:** `POST /api/bookings` and `POST /api/payments/webhook` finalization require MongoDB multi-document transactions (replica set / MongoDB Atlas); standalone `mongod` instances intentionally return HTTP `503` rather than committing partial booking/payment state.
+- **In-Memory API Rate Limiter:** `src/middleware/rateLimiter.js` uses per-process memory buckets (sufficient for single-instance deployment; multi-instance horizontal scaling should pair with reverse-proxy or shared Redis rate limiting).

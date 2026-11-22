@@ -3,6 +3,7 @@ import { getAuthStatusSummary, initAuth, resetAuth } from "./config/auth.js";
 import { closeDB, connectDB } from "./config/db.js";
 import { ensureDatabaseCollectionsAndIndexes } from "./config/dbIndexes.js";
 import { env, redactMongoUri } from "./config/env.js";
+import { bookingLifecycleCronService } from "./services/bookingLifecycleCron.service.js";
 
 let httpServer = null;
 let isShuttingDown = false;
@@ -20,6 +21,8 @@ async function shutdown(signal, exitCode = 0) {
   forceTimer.unref();
 
   try {
+    bookingLifecycleCronService.stop();
+
     if (httpServer) {
       await new Promise((resolve, reject) => {
         httpServer.close((err) => {
@@ -63,11 +66,16 @@ async function startServer() {
       }).`
     );
 
+    bookingLifecycleCronService.start();
+
     httpServer = app.listen(env.port, () => {
       console.log(
         `[GearNest API] Listening on port ${env.port} (${env.nodeEnv}) — Health: /api/health`
       );
     });
+    httpServer.requestTimeout = 30000;
+    httpServer.keepAliveTimeout = 65000;
+    httpServer.headersTimeout = 66000;
 
     httpServer.on("error", (error) => {
       if (error?.code === "EADDRINUSE") {

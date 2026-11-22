@@ -8,6 +8,7 @@ import { env } from "./config/env.js";
 import { paymentWebhookHandler } from "./controllers/paymentWebhook.controller.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { notFound } from "./middleware/notFound.js";
+import { apiRateLimiter } from "./middleware/rateLimiter.js";
 import { betterAuthHandler } from "./routes/auth.routes.js";
 import apiRouter from "./routes/index.js";
 
@@ -59,7 +60,7 @@ export function createApp({ webhookHandler = paymentWebhookHandler } = {}) {
     });
   });
 
-  app.use("/api", apiRouter);
+  app.use("/api", apiRateLimiter, apiRouter);
 
   // 6-7. Fallthrough 404 & centralized error handling
   app.use(notFound);

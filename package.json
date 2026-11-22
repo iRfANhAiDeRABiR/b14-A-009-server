@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "nodemon --watch src src/server.js",
     "start": "node src/server.js",
+    "seed:admin": "node src/scripts/seedAdmin.js",
     "test": "node --test tests/*.test.js",
     "check": "node -e \"const fs=require('fs'),path=require('path'),cp=require('child_process');const walk=d=>fs.existsSync(d)?fs.readdirSync(d,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(d,e.name)):e.name.endsWith('.js')?[path.join(d,e.name)]:[]):[];for(const f of [...walk('src'),...walk('tests')]){const r=cp.spawnSync(process.execPath,['--check',f],{stdio:'inherit'});if(r.status!==0)process.exit(r.status);}\""
   },
@@ -22,6 +23,8 @@
     "mongodb": "^7.9.1",
     "morgan": "^1.10.0",
     "multer": "^2.5.0",
+    "node-cron": "^4.6.0",
+    "nodemailer": "^10.6.1",
     "stripe": "^23.2.0"
   },
   "devDependencies": {

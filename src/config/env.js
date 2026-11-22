@@ -125,6 +125,10 @@ export const env = Object.freeze({
     { min: 30, max: 1440 }
   ),
   betterAuthUrl: String(process.env.BETTER_AUTH_URL || "").trim().replace(/\/+$/, ""),
+  enableBookingCron:
+    String(process.env.ENABLE_BOOKING_CRON || "true").trim().toLowerCase() !== "false",
+  bookingCompletionCron:
+    String(process.env.BOOKING_COMPLETION_CRON || "5 0 * * *").trim() || "5 0 * * *",
 });
 
 /**

@@ -26,9 +26,10 @@ export function buildPublicEquipmentMongoQuery(validatedParams = {}) {
     limit = 9,
   } = validatedParams;
 
-  // Hardcode Approved visibility unconditionally for the public marketplace catalog
+  // Hardcode Approved & non-archived visibility unconditionally for the public marketplace catalog
   const filter = {
     status: EQUIPMENT_STATUSES.APPROVED,
+    isDeleted: { $ne: true },
   };
 
   if (category && category !== "all") {

@@ -29,6 +29,7 @@ function evalCondition(doc, key, cond) {
       if (Boolean(cond.$exists) !== exists) return false;
     }
     if ("$in" in cond && !cond.$in.some((v) => String(doc[key]) === String(v))) return false;
+    if ("$ne" in cond && doc[key] === cond.$ne) return false;
     if ("$regex" in cond) {
       const rx = new RegExp(cond.$regex, cond.$options || "");
       if (!rx.test(String(doc[key] || ""))) return false;

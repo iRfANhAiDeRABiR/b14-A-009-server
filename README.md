@@ -346,6 +346,26 @@ Provides role-isolated finalized rental listing and detail inspection across Cus
 
 ---
 
+## Admin Equipment Management & Moderation APIs (Commit 13)
+
+Provides platform-wide moderation, editing, audit tracking, and history-safe archival/deletion exclusively for authenticated `Admin` accounts (`verifyToken` + `verifyAdmin`; Owners and Customers receive HTTP `403`).
+
+- **Moderation & Audit Fields:** Approving or rejecting equipment records `reviewedBy` (`req.user.id`), `reviewedAt`, `rejectionReason` (cleared to `null` on approval), and appends entries (`previousStatus`, `newStatus`, `reviewedBy`, `reviewedAt`, `rejectionReason`) to `approvalHistory`. Approval and rejection endpoints are idempotent on repeated identical state changes.
+- **Public & Owner Synchronization:** Approved listings become immediately eligible for public `GET /api/equipment` and `GET /api/equipment/featured`. Rejected listings disappear from public results while remaining visible on the Owner's `GET /api/equipment/my` view alongside `rejectionReason`.
+- **Update Allowlist:** `PATCH /api/admin/equipment/:id` validates strictly editable catalog fields (`name`, `description`, `category`, `location`, `rentalPrice`, `rentalType`, `availableQuantity`, `condition`, `brand`, `model`, `image`, `rentalTerms`) and rejects attempts to modify `ownerId`, `status`, `reviewedBy`, `reviewedAt`, or `approvalHistory` (`400`).
+- **History-Safe Deletion / Archival:** Equipment without bookings or payments is physically removed; equipment referenced by historical `bookings` or `payments` is soft-archived (`isDeleted: true`, `deletedAt`, `deletedBy`) so historical financial/rental records stay intact while the item disappears immediately from public, featured, Owner active, and Admin active listings, and related `favorites` are cleaned up.
+
+| Method & Endpoint | Auth / Role | Input / Query | Response & Behavior |
+| --- | --- | --- | --- |
+| `GET /api/admin/equipment` | `verifyToken`, `verifyAdmin` | `?search=&category=&status=&sort=&page=1&limit=10` (max `50`) | Lists non-archived equipment across `Pending`, `Approved`, `Rejected` sorted (`newest`, `oldest`, `price_asc`, `price_desc`) with safe owner info (`name`, `email`, `image`), pagination, and status `summary`. |
+| `GET /api/admin/equipment/:id` | `verifyToken`, `verifyAdmin` | Route param `:id` (`ObjectId`) | Full listing details including specifications, rental terms, owner info, and approval audit metadata (`404` when absent/archived). |
+| `PATCH /api/admin/equipment/:id/approve` | `verifyToken`, `verifyAdmin` | Route param `:id` | Sets `status: "Approved"`, clears `rejectionReason`, records reviewer audit trail. |
+| `PATCH /api/admin/equipment/:id/reject` | `verifyToken`, `verifyAdmin` | `{ "reason": "..." }` or `{ "rejectionReason": "..." }` (`3..500` chars) | Sets `status: "Rejected"`, stores trimmed `rejectionReason`, records reviewer audit trail. |
+| `PATCH /api/admin/equipment/:id` | `verifyToken`, `verifyAdmin` | Allowed editable equipment fields | Updates catalog metadata without altering `ownerId` or approval status (`400` on restricted fields). |
+| `DELETE /api/admin/equipment/:id` | `verifyToken`, `verifyAdmin` | Route param `:id` | Deletes unbooked equipment physically or soft-archives (`isDeleted: true`) booked/paid listings (`200` with `{ deleted, archived }`) while cleaning favorites. |
+
+---
+
 ## Development, Testing & Production Scripts
 
 ```bash

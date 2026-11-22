@@ -27,6 +27,8 @@ function matchesQuery(doc, filter = {}) {
     if (k === "$or") continue;
     if (v && typeof v === "object" && Array.isArray(v.$in)) {
       if (!v.$in.some((cand) => String(doc[k]) === String(cand))) return false;
+    } else if (v && typeof v === "object" && "$ne" in v) {
+      if (doc[k] === v.$ne) return false;
     } else if (k === "_id" || k === "equipmentId" || k === "ownerId") {
       if (String(doc[k]) !== String(v)) return false;
     } else if (doc[k] !== v) {

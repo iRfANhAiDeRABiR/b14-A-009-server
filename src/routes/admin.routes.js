@@ -1,5 +1,9 @@
 import { Router } from "express";
 import {
+  adminEquipmentController,
+  createAdminEquipmentController,
+} from "../controllers/adminEquipment.controller.js";
+import {
   adminRentalController,
   createAdminRentalController,
 } from "../controllers/adminRental.controller.js";
@@ -7,6 +11,7 @@ import {
   adminUserController,
   createAdminUserController,
 } from "../controllers/adminUser.controller.js";
+import { createAdminEquipmentRouter } from "./adminEquipment.routes.js";
 import { verifyAdmin } from "../middleware/verifyRoles.js";
 import { verifyToken } from "../middleware/verifyToken.js";
 
@@ -15,6 +20,7 @@ export function createAdminRouter({
   adminMiddleware = verifyAdmin,
   controller = adminUserController,
   rentalController = adminRentalController,
+  equipmentController = adminEquipmentController,
 } = {}) {
   const router = Router();
 
@@ -40,9 +46,22 @@ export function createAdminRouter({
     rentalController.getRentalDetails
   );
 
+  router.use(
+    "/equipment",
+    createAdminEquipmentRouter({
+      authMiddleware,
+      adminMiddleware,
+      controller: equipmentController,
+    })
+  );
+
   return router;
 }
 
-export { createAdminRentalController, createAdminUserController };
+export {
+  createAdminEquipmentController,
+  createAdminRentalController,
+  createAdminUserController,
+};
 export const adminRouter = createAdminRouter();
 export default adminRouter;

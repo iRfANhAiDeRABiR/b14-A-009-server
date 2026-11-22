@@ -204,7 +204,7 @@ export function createStripeCheckoutService({
       const equipment = await equipmentCollection.findOne({
         _id: intent.equipmentId,
       });
-      if (!equipment) {
+      if (!equipment || equipment.isDeleted === true) {
         throw new ApiError("Equipment not found", 404, { code: "NOT_FOUND" });
       }
       if (equipment.status !== EQUIPMENT_STATUSES.APPROVED) {

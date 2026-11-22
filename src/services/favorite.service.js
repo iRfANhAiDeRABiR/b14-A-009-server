@@ -37,10 +37,10 @@ export function createFavoriteService({
 
       const equipment = await equipmentCollection.findOne(
         { _id: equipmentObjectId },
-        { projection: { _id: 1, status: 1 } }
+        { projection: { _id: 1, status: 1, isDeleted: 1 } }
       );
 
-      if (!equipment) {
+      if (!equipment || equipment.isDeleted === true) {
         throw new ApiError("Equipment not found", 404, { code: "NOT_FOUND" });
       }
 

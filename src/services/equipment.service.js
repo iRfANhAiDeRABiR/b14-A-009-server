@@ -103,7 +103,7 @@ export function createEquipmentService({
       ]);
 
       const docs = await equipmentCollection
-        .find({ status: EQUIPMENT_STATUSES.APPROVED })
+        .find({ status: EQUIPMENT_STATUSES.APPROVED, isDeleted: { $ne: true } })
         .sort({ createdAt: -1, _id: -1 })
         .limit(safeLimit)
         .toArray();
@@ -129,7 +129,10 @@ export function createEquipmentService({
         allowStatus: true,
       });
       const skip = (page - 1) * limit;
-      const baseOwnerFilter = { ownerId: buildOwnerIdMatch(ownerId) };
+      const baseOwnerFilter = {
+        ownerId: buildOwnerIdMatch(ownerId),
+        isDeleted: { $ne: true },
+      };
       const listFilter =
         status !== "all" ? { ...baseOwnerFilter, status } : baseOwnerFilter;
 
@@ -184,7 +187,7 @@ export function createEquipmentService({
       ]);
 
       const doc = await equipmentCollection.findOne({ _id: objectId });
-      if (!doc) {
+      if (!doc || doc.isDeleted === true) {
         throw new ApiError("Equipment not found", 404, { code: "NOT_FOUND" });
       }
 
@@ -211,7 +214,7 @@ export function createEquipmentService({
 
       const equipmentCollection = await equipmentCollectionGetter();
       const existing = await equipmentCollection.findOne({ _id: objectId });
-      if (!existing) {
+      if (!existing || existing.isDeleted === true) {
         throw new ApiError("Equipment not found", 404, { code: "NOT_FOUND" });
       }
 
@@ -262,7 +265,7 @@ export function createEquipmentService({
       ]);
 
       const existing = await equipmentCollection.findOne({ _id: objectId });
-      if (!existing) {
+      if (!existing || existing.isDeleted === true) {
         throw new ApiError("Equipment not found", 404, { code: "NOT_FOUND" });
       }
 

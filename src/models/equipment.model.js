@@ -30,6 +30,14 @@ export const SAFE_EQUIPMENT_OWNER_PROJECTION = Object.freeze({
   image: 1,
 });
 
+export const SAFE_ADMIN_EQUIPMENT_OWNER_PROJECTION = Object.freeze({
+  _id: 1,
+  id: 1,
+  name: 1,
+  email: 1,
+  image: 1,
+});
+
 export { getEquipmentCollection };
 
 /**
@@ -40,16 +48,21 @@ export function buildEquipmentDocument(payload = {}) {
   const now = new Date();
   return {
     ...clean,
+    isDeleted: false,
     createdAt: now,
     updatedAt: now,
   };
 }
 
 /**
- * Normalizes equipment document fields cleanly for public and owner responses,
+ * Normalizes equipment document fields cleanly for public, owner, and admin responses,
  * attaching optional sanitized owner summary without leaking private user data.
  */
-export function sanitizeEquipmentRecord(doc, ownerDoc = null) {
+export function sanitizeEquipmentRecord(
+  doc,
+  ownerDoc = null,
+  { includeAudit = false, includeOwnerEmail = false } = {}
+) {
   if (!doc || typeof doc !== "object") return null;
 
   const base = {
@@ -74,11 +87,34 @@ export function sanitizeEquipmentRecord(doc, ownerDoc = null) {
     updatedAt: doc.updatedAt || null,
   };
 
+  if (doc.status === "Rejected" || includeAudit) {
+    base.rejectionReason =
+      typeof doc.rejectionReason === "string" && doc.rejectionReason.trim()
+        ? doc.rejectionReason.trim()
+        : null;
+  }
+
+  if (includeAudit) {
+    base.reviewedBy = doc.reviewedBy ? String(doc.reviewedBy) : null;
+    base.reviewedAt = doc.reviewedAt || null;
+    base.approvalHistory = Array.isArray(doc.approvalHistory)
+      ? doc.approvalHistory
+      : [];
+    base.isDeleted = Boolean(doc.isDeleted);
+    base.deletedAt = doc.deletedAt || null;
+  }
+
   if (ownerDoc && typeof ownerDoc === "object") {
     base.owner = {
       id: ownerDoc.id ? String(ownerDoc.id) : ownerDoc._id ? String(ownerDoc._id) : "",
       name: ownerDoc.name || "GearNest Owner",
       image: ownerDoc.image || null,
+      ...(includeOwnerEmail
+        ? {
+            email: ownerDoc.email || "",
+            photoURL: ownerDoc.image || "",
+          }
+        : {}),
     };
   }
 

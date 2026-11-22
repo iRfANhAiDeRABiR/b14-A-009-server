@@ -69,6 +69,10 @@ export const COLLECTION_INDEX_SPECS = Object.freeze({
       options: { name: "equipment_public_availability_newest_idx" },
     },
     {
+      key: { isDeleted: 1, status: 1, category: 1, createdAt: -1, _id: -1 },
+      options: { name: "equipment_admin_moderation_idx" },
+    },
+    {
       key: { name: "text", category: "text", location: "text" },
       options: {
         name: "equipment_search_text_idx",

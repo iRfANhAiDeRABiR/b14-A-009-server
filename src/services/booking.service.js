@@ -115,7 +115,7 @@ export function createBookingService({
         _id: validated.equipmentId,
       });
 
-      if (!equipment) {
+      if (!equipment || equipment.isDeleted === true) {
         throw new ApiError("Equipment not found", 404, { code: "NOT_FOUND" });
       }
 
@@ -171,7 +171,7 @@ export function createBookingService({
           { _id: validated.equipmentId },
           { session }
         );
-        if (!equipment) {
+        if (!equipment || equipment.isDeleted === true) {
           throw new ApiError("Equipment not found", 404, { code: "NOT_FOUND" });
         }
         if (equipment.status !== EQUIPMENT_STATUSES.APPROVED) {

@@ -7,8 +7,9 @@ import { verifyRenter } from "../middleware/verifyRoles.js";
 import { verifyToken } from "../middleware/verifyToken.js";
 
 /**
- * Registers Customer Stripe Hosted Checkout payment routes (`/api/payments`).
- * Webhook endpoints requiring raw request body signatures are deferred strictly to Commit 11.
+ * Registers Customer Stripe Hosted Checkout & read-only status payment routes (`/api/payments`).
+ * Note: `POST /api/payments/webhook` requires raw binary body parsing and is mounted BEFORE
+ * `express.json()` directly inside `src/app.js`.
  */
 export function createPaymentRouter({
   authMiddleware = verifyToken,
@@ -22,6 +23,13 @@ export function createPaymentRouter({
     authMiddleware,
     renterMiddleware,
     controller.createCheckoutSession
+  );
+
+  router.get(
+    "/session/:sessionId",
+    authMiddleware,
+    renterMiddleware,
+    controller.getSessionStatus
   );
 
   return router;

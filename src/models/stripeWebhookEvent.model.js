@@ -37,6 +37,11 @@ export function buildStripeWebhookEventDocument(payload = {}) {
     stripeEventId,
     eventType,
     processed,
+    status: cleanString(payload.status) || (processed ? "processed" : "processing"),
+    ...(payload.bookingIntentId ? { bookingIntentId: payload.bookingIntentId } : {}),
+    ...(payload.finalBookingId ? { finalBookingId: payload.finalBookingId } : {}),
+    ...(payload.paymentId ? { paymentId: payload.paymentId } : {}),
+    ...(payload.reason ? { reason: cleanString(payload.reason) } : {}),
     processedAt: processed ? payload.processedAt || new Date() : null,
     createdAt: new Date(),
   };

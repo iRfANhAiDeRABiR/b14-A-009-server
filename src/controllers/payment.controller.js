@@ -19,6 +19,19 @@ export function createPaymentController(service = paymentService) {
         data: result.data,
       });
     }),
+
+    getSessionStatus: asyncHandler(async (req, res) => {
+      const statusData = await service.getPaymentSessionStatus({
+        customerId: req.user.id,
+        sessionId: req.params.sessionId,
+      });
+
+      return sendSuccess(res, {
+        statusCode: 200,
+        message: "Payment session status retrieved successfully",
+        data: statusData,
+      });
+    }),
   };
 }
 

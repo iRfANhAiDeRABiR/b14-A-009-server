@@ -2,6 +2,7 @@ import Stripe from "stripe";
 import { ApiError } from "../utils/ApiError.js";
 
 const STRIPE_KEY_PATTERN = /^(?:sk|rk)_(?:test|live)_[A-Za-z0-9]{8,}$/;
+const STRIPE_WEBHOOK_SECRET_PATTERN = /^whsec_[A-Za-z0-9_]{8,}$/;
 const ISO_CURRENCY_PATTERN = /^[a-z]{3}$/;
 
 let cachedStripeKey = "";
@@ -10,6 +11,32 @@ const verifiedCurrencyCache = new Map();
 
 export function isValidStripeSecretKeyFormat(secretKey) {
   return typeof secretKey === "string" && STRIPE_KEY_PATTERN.test(secretKey.trim());
+}
+
+export function isValidStripeWebhookSecretFormat(secret) {
+  return (
+    typeof secret === "string" &&
+    STRIPE_WEBHOOK_SECRET_PATTERN.test(secret.trim())
+  );
+}
+
+/**
+ * Resolves and validates the Stripe webhook signing secret without logging or exposing it.
+ */
+export function resolveStripeWebhookSecret(secretOverride) {
+  const rawSecret =
+    secretOverride !== undefined
+      ? secretOverride
+      : process.env.STRIPE_WEBHOOK_SECRET;
+  const cleanSecret = typeof rawSecret === "string" ? rawSecret.trim() : "";
+
+  if (!cleanSecret || !isValidStripeWebhookSecretFormat(cleanSecret)) {
+    throw new ApiError("Webhook configuration unavailable", 503, {
+      code: "STRIPE_WEBHOOK_NOT_CONFIGURED",
+    });
+  }
+
+  return cleanSecret;
 }
 
 /**

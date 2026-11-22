@@ -304,6 +304,25 @@ Initiates Stripe Hosted Checkout sessions from verified `bookingIntents` reserva
 
 ---
 
+## Stripe Webhook Payment Confirmation & Status APIs (Commit 11)
+
+Payment confirmation occurs **exclusively** inside verified Stripe webhook processing — browser redirects to `/payment/success` and read-only status checks (`GET /api/payments/session/:sessionId`) never mark bookings as confirmed or payments as `Paid`.
+
+- **Webhook Route & Raw Body Security (`POST /api/payments/webhook`):** Mounted in [app.js](src/app.js) with `express.raw({ type: "application/json" })` **strictly before `express.json()`** so `stripe.webhooks.constructEvent(rawBody, signature, STRIPE_WEBHOOK_SECRET)` receives the unmodified binary `Buffer`. Rejects missing/invalid signatures, tampered bodies, pre-parsed JSON, and stale timestamps with HTTP `400` (`503` when `STRIPE_WEBHOOK_SECRET` is unconfigured). Uses Stripe cryptographic signatures instead of Customer JWT middleware.
+- **Supported Events & Delayed Payment Safety:**
+  - `checkout.session.completed` & `checkout.session.async_payment_succeeded`: Re-retrieves the authoritative Checkout Session and associated PaymentIntent directly from Stripe (`status === "complete"`, `payment_status === "paid"`, `paymentIntent.status === "succeeded"`), cross-checks `metadata.bookingIntentId`, `client_reference_id`, `customerId`, `ownerId`, `equipmentId`, currency, and minor-unit `amount_total`. If `checkout.session.completed` has `payment_status: "unpaid"`, finalization is deferred until `checkout.session.async_payment_succeeded`.
+  - `checkout.session.async_payment_failed`: Updates un-converted holds to `Failed`, releasing reserved quantity without affecting already-converted bookings.
+  - `checkout.session.expired`: Transitions open `PendingPayment` holds to `Expired` safely without reversing already-confirmed bookings.
+  - Unsupported event types: Audited safely and acknowledged with HTTP `200`.
+- **Atomic MongoDB Transaction & Unique Constraints:** [bookingFinalization.service.js](src/services/bookingFinalization.service.js) uses `session.withTransaction` (replica set required) to atomically: (1) claim `stripeWebhookEvents` (`stripe_webhook_events_event_id_unique`), (2) verify the reservation is unconverted, (3) insert the finalized `bookings` document (`paymentStatus: "Paid"`, `bookingStatus: "Confirmed"`, unique index `bookings_booking_intent_unique`), (4) insert the linked `payments` document (`stripeCheckoutSessionId` & `stripePaymentIntentId` unique indexes, `amount`, `amountMinor`, `paidAt`), (5) convert `bookingIntents` (`status: "Converted"`, `finalBookingId`, `paymentId`, removing TTL `expiresAt`), and (6) mark the webhook event `processed: true`. Transaction aborts roll back all steps and return HTTP `500` so Stripe retries cleanly.
+
+| Method & Endpoint | Auth / Role | Input | Response Format | Error Responses |
+| --- | --- | --- | --- | --- |
+| `POST /api/payments/webhook` | Stripe Signature (`stripe-signature` + `STRIPE_WEBHOOK_SECRET`) | Raw JSON `Buffer` (Stripe Event) | `200`: `{ success: true, received: true, message: "Webhook processed successfully" }` (or `"Webhook event already processed"`) | `400` (`Invalid Stripe webhook signature`), `500` (transient failure for Stripe retry), `503` (`Webhook configuration unavailable` / transaction requirement) |
+| `GET /api/payments/session/:sessionId` | `verifyToken`, `verifyRenter` (`Customer`) | Route param `:sessionId` (`cs_...`) | `200`: Confirmed (`bookingId`, `equipmentName`, `paymentStatus: "Paid"`, `bookingStatus: "Confirmed"`, `totalAmount`, `currency`, `transactionId`, `paidAt`, `verified: true`) or current DB state (`Pending`/`PendingPayment`/`Expired`/`Failed`) | `400` (`Invalid payment session ID`), `401`, `403` (`Customer access required`), `404` (`Payment session not found`) |
+
+---
+
 ## Development, Testing & Production Scripts
 
 ```bash

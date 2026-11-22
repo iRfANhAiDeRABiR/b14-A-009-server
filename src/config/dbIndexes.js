@@ -102,6 +102,14 @@ export const COLLECTION_INDEX_SPECS = Object.freeze({
       key: { equipmentId: 1, bookingStatus: 1, startDate: 1, endDate: 1 },
       options: { name: "bookings_availability_dates_idx" },
     },
+    {
+      key: { bookingIntentId: 1 },
+      options: {
+        name: "bookings_booking_intent_unique",
+        unique: true,
+        partialFilterExpression: { bookingIntentId: { $exists: true } },
+      },
+    },
   ],
   [COLLECTIONS.BOOKING_INTENTS]: [
     {

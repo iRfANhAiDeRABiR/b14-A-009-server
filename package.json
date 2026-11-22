@@ -9,6 +9,7 @@
     "dev": "nodemon --watch src src/server.js",
     "start": "node src/server.js",
     "seed:admin": "node src/scripts/seedAdmin.js",
+    "seed:equipment": "node --env-file=.env src/scripts/seedDemoEquipment.js",
     "test": "node --test tests/*.test.js",
     "check": "node -e \"const fs=require('fs'),path=require('path'),cp=require('child_process');const walk=d=>fs.existsSync(d)?fs.readdirSync(d,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(d,e.name)):e.name.endsWith('.js')?[path.join(d,e.name)]:[]):[];for(const f of [...walk('src'),...walk('tests')]){const r=cp.spawnSync(process.execPath,['--check',f],{stdio:'inherit'});if(r.status!==0)process.exit(r.status);}\""
   },

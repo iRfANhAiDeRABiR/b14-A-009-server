@@ -461,14 +461,21 @@ describe("Equipment Management & Image Upload APIs (Commit 06)", () => {
     assert.equal(pubJson.data[0].owner.email, undefined);
     assert.equal(pubJson.data[0].owner.passwordHash, undefined);
 
-    // Public Featured -> caps strictly to MongoDB .limit(6)
+    // Public Featured -> defaults to MongoDB .limit(6) and caps explicit limit at 12
     equipmentSpy.length = 0;
-    const featRes = await fetch(`${baseUrl}/api/equipment/featured?limit=12`);
-    const featJson = await featRes.json();
-    assert.equal(featRes.status, 200);
-    assert.equal(featJson.data.length, 6);
+    const featDefaultRes = await fetch(`${baseUrl}/api/equipment/featured`);
+    const featDefaultJson = await featDefaultRes.json();
+    assert.equal(featDefaultRes.status, 200);
+    assert.equal(featDefaultJson.data.length, 6);
     assert.ok(equipmentSpy.some((s) => s.op === "limit" && s.value === 6));
-    assert.ok(featJson.data.every((i) => i.status === EQUIPMENT_STATUSES.APPROVED));
+    assert.ok(featDefaultJson.data.every((i) => i.status === EQUIPMENT_STATUSES.APPROVED));
+
+    equipmentSpy.length = 0;
+    const featMaxRes = await fetch(`${baseUrl}/api/equipment/featured?limit=25`);
+    const featMaxJson = await featMaxRes.json();
+    assert.equal(featMaxRes.status, 200);
+    assert.ok(featMaxJson.data.length <= 12);
+    assert.ok(equipmentSpy.some((s) => s.op === "limit" && s.value === 12));
 
     // Details checks
     assert.equal((await fetch(`${baseUrl}/api/equipment/${approvedIds[0].toHexString()}`)).status, 401);

@@ -17,7 +17,10 @@ export function createEquipmentController(service = equipmentService) {
       const result = await service.listPublicApprovedEquipment(req.query);
       return sendSuccess(res, {
         statusCode: 200,
-        message: "Approved equipment retrieved successfully",
+        message:
+          result.items.length === 0
+            ? "No matching equipment found"
+            : "Equipment retrieved successfully",
         data: result.items,
         pagination: result.pagination,
       });

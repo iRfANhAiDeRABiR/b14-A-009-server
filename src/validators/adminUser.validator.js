@@ -1,5 +1,6 @@
 import { ALLOWED_USER_ROLES } from "../constants/roles.js";
 import { ApiError } from "../utils/ApiError.js";
+import { escapeRegexInput } from "../utils/regex.js";
 import { cleanString, isValidUserIdentifier } from "./validationHelpers.js";
 
 const ALLOWED_USER_SORTS = new Set([
@@ -13,9 +14,7 @@ const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
 
-export function escapeRegexInput(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+export { escapeRegexInput };
 
 function parsePositiveInteger(rawValue, label, { fallback, max } = {}) {
   if (rawValue === undefined || rawValue === null || String(rawValue).trim() === "") {

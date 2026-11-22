@@ -206,14 +206,39 @@ All routes below require a valid Better Auth Bearer token (`Authorization: Beare
 
 | Method & Endpoint | Access / Middleware | Description |
 | --- | --- | --- |
-| `GET /api/equipment` | Public | Lists `Approved` equipment newest-first with pagination (`page`, `limit` max `50`). Full search/filter/sort expands in Commit 07. |
-| `GET /api/equipment/featured` | Public | Returns up to `6` newest `Approved` items via MongoDB `.limit(safeLimit)` (`limit` query max `6`). |
+| `GET /api/equipment` | Public | Dynamic search, filter, sort & pagination across `Approved` equipment only (see query specification below). |
+| `GET /api/equipment/featured` | Public | Returns newest `Approved` items via MongoDB `.limit(safeLimit)` (default `6`, maximum `12`). |
 | `GET /api/equipment/my` | `verifyToken`, `verifyOwner` | Lists the authenticated Owner's `Pending`, `Approved`, and `Rejected` listings (`page`, `limit`, optional `status`) plus status counts. |
 | `POST /api/equipment` | `verifyToken`, `verifyOwner` | Submits new equipment; validates all 12 fields (`rentalPrice > 0`, integer `availableQuantity >= 1`, HTTP/HTTPS `image`), assigns `ownerId` from `req.user.id`, forces `status: "Pending"`, and rejects spoofed `ownerId`/`status`. |
 | `GET /api/equipment/:id` | `verifyToken` | Returns item details with safe owner fields. Customers and other users view `Approved` items only (`404` otherwise); Owners can inspect their own `Pending`/`Rejected` items. Admin full review is scheduled for Commit 13. |
 | `PATCH /api/equipment/:id` | `verifyToken`, `verifyOwner` | Updates editable fields of equipment owned by `req.user.id` (`403` cross-owner). Rejects attempts to change `ownerId`, `status`, or unknown fields (`400`). |
 | `DELETE /api/equipment/:id` | `verifyToken`, `verifyOwner` | Deletes unbooked equipment owned by `req.user.id` (`403` cross-owner) and removes orphaned favorites. Blocks deletion (`409`) if associated bookings or payments exist. |
 | `POST /api/uploads/equipment-image` | `verifyToken`, `verifyOwner`, `upload` | Accepts `multipart/form-data` (`image`, max `5 MB`, JPG/JPEG/PNG/WEBP verified by MIME, extension, and binary file signature) and proxies upload to ImgBB returning `{ url, deleteUrl }`. |
+
+### Public Catalog Search, Filtering, Sorting & Pagination (`GET /api/equipment` — Commit 07)
+
+Returns `Approved` equipment only (client `status` parameters cannot override public approval visibility) and executes search, filters, sorting, and pagination directly against MongoDB:
+
+- **`search`:** Case-insensitive regex-escaped substring match (`$or`) across `name`, `title` (if present), `location`, and `category` (max `120` chars). Note: unanchored `$regex` preserves partial substring matching cleanly while the collection retains compound `status`/filter/sort indexes and the `equipment_search_text_idx` text index.
+- **`category`:** `all` (or omitted) or one of the 6 canonical categories (`400 Invalid equipment category` otherwise).
+- **`rentalType`:** `all` (or omitted) or `Daily` | `Weekly` | `Monthly` (`400 Invalid rental type` otherwise).
+- **`minPrice`, `maxPrice`:** Non-negative finite numeric bounds (`$gte` / `$lte`, rejects `NaN`, `Infinity`, negatives, and `minPrice > maxPrice` with `400 Invalid price range`).
+- **`availability`:** `all` (or omitted) | `available` (`availableQuantity > 0`) | `unavailable` (`availableQuantity <= 0` or missing/null legacy quantity; `400 Invalid availability filter` otherwise).
+- **`sort`:** `newest` (default, `{ createdAt: -1, _id: -1 }`), `price_asc` (`{ rentalPrice: 1, _id: 1 }`), `price_desc` (`{ rentalPrice: -1, _id: 1 }`), `featured` (`{ createdAt: -1, _id: -1 }` fallback; `400 Invalid sorting option` otherwise).
+- **`page`, `limit`:** Positive integers defaulting to `page=1`, `limit=9`, maximum `limit=50` (`400 Invalid pagination parameters` otherwise). Returns `{ success: true, message, data, pagination: { currentPage, limit, totalItems, totalPages } }` (`"No matching equipment found"` when `data` is empty).
+
+Example queries:
+
+```text
+GET /api/equipment?search=excavator
+GET /api/equipment?category=Construction%20Equipment
+GET /api/equipment?rentalType=Daily
+GET /api/equipment?minPrice=1000&maxPrice=10000
+GET /api/equipment?availability=available
+GET /api/equipment?sort=price_asc
+GET /api/equipment?page=2&limit=9
+GET /api/equipment?search=excavator&category=Construction%20Equipment&rentalType=Daily&minPrice=3000&maxPrice=15000&availability=available&sort=price_asc&page=1&limit=9
+```
 
 ---
 

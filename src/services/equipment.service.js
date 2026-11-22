@@ -15,9 +15,12 @@ import {
 } from "../models/equipment.model.js";
 import {
   buildUserLookupFilter,
-  resolveUserIdentifier,
 } from "../models/user.model.js";
 import { ApiError } from "../utils/ApiError.js";
+import {
+  createEquipmentQueryService,
+  hydrateEquipmentOwners,
+} from "./equipmentQuery.service.js";
 import {
   parseEquipmentPaginationQuery,
   validateEquipmentCreatePayload,
@@ -33,25 +36,6 @@ function buildOwnerIdMatch(ownerId) {
   return clean;
 }
 
-async function hydrateOwnersByIds(usersCollection, ownerIds) {
-  const uniqueIds = [...new Set(ownerIds.map((id) => String(id || "").trim()).filter(Boolean))];
-  if (uniqueIds.length === 0) return new Map();
-
-  const orClauses = uniqueIds.flatMap((id) => buildUserLookupFilter(id).$or);
-  const ownerDocs = await usersCollection
-    .find({ $or: orClauses }, { projection: SAFE_EQUIPMENT_OWNER_PROJECTION })
-    .toArray();
-
-  const ownerMap = new Map();
-  for (const doc of ownerDocs) {
-    const resolved = resolveUserIdentifier(doc);
-    if (resolved) ownerMap.set(resolved, doc);
-    if (doc._id) ownerMap.set(String(doc._id), doc);
-    if (doc.id) ownerMap.set(String(doc.id), doc);
-  }
-  return ownerMap;
-}
-
 /**
  * Factory creating equipment lifecycle services with injectable collection getters for testing.
  */
@@ -62,6 +46,11 @@ export function createEquipmentService({
   paymentsCollectionGetter = getPaymentsCollection,
   favoritesCollectionGetter = getFavoritesCollection,
 } = {}) {
+  const queryService = createEquipmentQueryService({
+    equipmentCollectionGetter,
+    usersCollectionGetter,
+  });
+
   return {
     async createEquipment({ ownerId, payload }) {
       const cleanData = validateEquipmentCreatePayload(payload);
@@ -105,7 +94,7 @@ export function createEquipmentService({
             code: "VALIDATION_ERROR",
           });
         }
-        safeLimit = Math.min(6, parsed);
+        safeLimit = Math.min(12, parsed);
       }
 
       const [equipmentCollection, usersCollection] = await Promise.all([
@@ -119,7 +108,7 @@ export function createEquipmentService({
         .limit(safeLimit)
         .toArray();
 
-      const ownerMap = await hydrateOwnersByIds(
+      const ownerMap = await hydrateEquipmentOwners(
         usersCollection,
         docs.map((item) => item.ownerId)
       );
@@ -130,44 +119,7 @@ export function createEquipmentService({
     },
 
     async listPublicApprovedEquipment(rawQuery = {}) {
-      const { page, limit } = parseEquipmentPaginationQuery(rawQuery, {
-        defaultLimit: 9,
-        maxLimit: 50,
-      });
-      const skip = (page - 1) * limit;
-      const filter = { status: EQUIPMENT_STATUSES.APPROVED };
-
-      const [equipmentCollection, usersCollection] = await Promise.all([
-        equipmentCollectionGetter(),
-        usersCollectionGetter(),
-      ]);
-
-      const [totalItems, docs] = await Promise.all([
-        equipmentCollection.countDocuments(filter),
-        equipmentCollection
-          .find(filter)
-          .sort({ createdAt: -1, _id: -1 })
-          .skip(skip)
-          .limit(limit)
-          .toArray(),
-      ]);
-
-      const ownerMap = await hydrateOwnersByIds(
-        usersCollection,
-        docs.map((item) => item.ownerId)
-      );
-
-      return {
-        items: docs.map((doc) =>
-          sanitizeEquipmentRecord(doc, ownerMap.get(String(doc.ownerId)) || null)
-        ),
-        pagination: {
-          currentPage: page,
-          limit,
-          totalItems,
-          totalPages: totalItems === 0 ? 0 : Math.ceil(totalItems / limit),
-        },
-      };
+      return queryService.queryPublicEquipment(rawQuery);
     },
 
     async listOwnerEquipment({ ownerId, query = {} }) {

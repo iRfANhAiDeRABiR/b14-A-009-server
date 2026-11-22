@@ -141,6 +141,50 @@ export function getDefaultCookieAttributes({ isProduction, baseUrl, trustedOrigi
   };
 }
 
+export function resolveAuthBaseUrl() {
+  const rawBaseUrl = cleanString(process.env.BETTER_AUTH_URL || env.betterAuthUrl);
+  const fallbackBaseUrl = !env.isProduction ? `http://localhost:${env.port}` : "";
+  const candidateBaseUrl = rawBaseUrl || fallbackBaseUrl;
+
+  if (!candidateBaseUrl) {
+    throw new Error(
+      "Missing required BETTER_AUTH_URL environment variable for production."
+    );
+  }
+  if (!isValidHttpUrl(candidateBaseUrl)) {
+    throw new Error(
+      "Invalid BETTER_AUTH_URL. Expected a valid http:// or https:// URL."
+    );
+  }
+
+  return new URL(candidateBaseUrl).origin;
+}
+
+/**
+ * Resolves JWKS URL, issuer, and audience matching Better Auth's JWT plugin config.
+ */
+export function getAuthJwtVerificationConfig() {
+  const baseUrl = resolveAuthBaseUrl();
+
+  const rawJwksUrl = cleanString(process.env.BETTER_AUTH_JWKS_URL);
+  if (rawJwksUrl && !isValidHttpUrl(rawJwksUrl)) {
+    throw new Error(
+      "Invalid BETTER_AUTH_JWKS_URL. Expected a valid http:// or https:// URL."
+    );
+  }
+
+  const jwksUrl = rawJwksUrl || `${baseUrl}/api/auth/jwks`;
+  const issuer = cleanString(process.env.BETTER_AUTH_ISSUER) || baseUrl;
+  const audience = cleanString(process.env.BETTER_AUTH_AUDIENCE) || baseUrl;
+
+  return {
+    baseUrl,
+    jwksUrl,
+    issuer,
+    audience,
+  };
+}
+
 /**
  * Validates Better Auth environment variables without logging or exposing secrets.
  */
@@ -159,22 +203,7 @@ export function requireAuthEnv() {
     );
   }
 
-  const rawBaseUrl = cleanString(process.env.BETTER_AUTH_URL || env.betterAuthUrl);
-  const fallbackBaseUrl = !env.isProduction ? `http://localhost:${env.port}` : "";
-  const candidateBaseUrl = rawBaseUrl || fallbackBaseUrl;
-
-  if (!candidateBaseUrl) {
-    throw new Error(
-      "Missing required BETTER_AUTH_URL environment variable for production."
-    );
-  }
-  if (!isValidHttpUrl(candidateBaseUrl)) {
-    throw new Error(
-      "Invalid BETTER_AUTH_URL. Expected a valid http:// or https:// URL."
-    );
-  }
-
-  const baseUrl = new URL(candidateBaseUrl).origin;
+  const { baseUrl, jwksUrl, issuer, audience } = getAuthJwtVerificationConfig();
   const trustedOrigins = resolveTrustedOrigins(baseUrl);
   const defaultCookieAttributes = getDefaultCookieAttributes({
     isProduction: env.isProduction,
@@ -188,6 +217,9 @@ export function requireAuthEnv() {
   return {
     secret,
     baseUrl,
+    jwksUrl,
+    issuer,
+    audience,
     trustedOrigins,
     defaultCookieAttributes,
     isHttps: baseUrl.startsWith("https://"),

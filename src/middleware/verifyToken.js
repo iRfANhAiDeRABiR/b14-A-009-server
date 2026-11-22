@@ -1,0 +1,160 @@
+import { ObjectId } from "mongodb";
+
+import { verifyJwtAccessToken } from "../config/jwks.js";
+import { ALLOWED_USER_ROLES } from "../constants/roles.js";
+import { getUsersCollection } from "../models/collections.js";
+import { AuthErrors } from "../utils/authErrors.js";
+
+const SAFE_USER_PROJECTION = Object.freeze({
+  _id: 1,
+  id: 1,
+  name: 1,
+  email: 1,
+  role: 1,
+  image: 1,
+  banned: 1,
+  banExpires: 1,
+  suspended: 1,
+  disabled: 1,
+  active: 1,
+  status: 1,
+});
+
+function extractBearerToken(authorizationHeader) {
+  if (typeof authorizationHeader !== "string") {
+    throw AuthErrors.missingToken();
+  }
+
+  const trimmed = authorizationHeader.trim();
+  if (!trimmed) {
+    throw AuthErrors.missingToken();
+  }
+
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 1) {
+    if (parts[0].toLowerCase() === "bearer") {
+      throw AuthErrors.missingToken();
+    }
+    throw AuthErrors.invalidToken();
+  }
+
+  if (parts.length !== 2 || parts[0].toLowerCase() !== "bearer") {
+    throw AuthErrors.invalidToken();
+  }
+
+  const token = parts[1].trim();
+  if (!token) {
+    throw AuthErrors.missingToken();
+  }
+
+  return token;
+}
+
+function resolveDatabaseUserId(user) {
+  if (typeof user?.id === "string" && user.id.trim().length > 0) {
+    return user.id.trim();
+  }
+  if (user?._id !== undefined && user?._id !== null) {
+    return String(user._id);
+  }
+  return "";
+}
+
+function isAccountDisabled(user) {
+  if (!user || typeof user !== "object") return false;
+
+  if (user.banned === true) {
+    if (!user.banExpires) return true;
+    const expiresAt = new Date(user.banExpires);
+    if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() > Date.now()) {
+      return true;
+    }
+  }
+
+  if (user.suspended === true || user.disabled === true || user.active === false) {
+    return true;
+  }
+
+  if (typeof user.status === "string") {
+    const normalized = user.status.trim().toLowerCase();
+    if (["suspended", "banned", "disabled", "inactive"].includes(normalized)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function findCurrentUserBySubject(usersCollection, subject) {
+  const candidates = [{ _id: subject }, { id: subject }];
+  if (ObjectId.isValid(subject) && new ObjectId(subject).toString() === subject) {
+    candidates.unshift({ _id: new ObjectId(subject) });
+  }
+
+  return usersCollection.findOne(
+    { $or: candidates },
+    { projection: SAFE_USER_PROJECTION }
+  );
+}
+
+/**
+ * Factory creating the JWT authentication middleware with injectable collaborators for testing.
+ * Always verifies cryptographic signatures against JWKS before loading the fresh user record
+ * from MongoDB so stale JWT claims never retain revoked privileges.
+ */
+export function createVerifyTokenMiddleware({
+  usersCollectionGetter = getUsersCollection,
+  verifyAccessToken = verifyJwtAccessToken,
+} = {}) {
+  return async function verifyToken(req, _res, next) {
+    try {
+      // STEP 01: Read Bearer token from Authorization header
+      const token = extractBearerToken(req.headers?.authorization);
+
+      // STEP 02-03: Cryptographically verify signature, JWKS key, iss, aud, exp, sub & algorithm
+      const verifiedPayload = await verifyAccessToken(token);
+
+      // STEP 04: Load fresh user & current role directly from MongoDB `users`
+      const usersCollection = await usersCollectionGetter();
+      const user = await findCurrentUserBySubject(
+        usersCollection,
+        verifiedPayload.sub.trim()
+      );
+
+      if (!user) {
+        return next(AuthErrors.userNotFound());
+      }
+
+      if (isAccountDisabled(user)) {
+        return next(AuthErrors.accountDisabled());
+      }
+
+      const currentRole = user.role;
+      if (typeof currentRole !== "string" || !ALLOWED_USER_ROLES.includes(currentRole)) {
+        return next(AuthErrors.invalidRole());
+      }
+
+      const actualUserId = resolveDatabaseUserId(user);
+      if (!actualUserId) {
+        return next(AuthErrors.userNotFound());
+      }
+
+      // STEP 05: Attach verified token payload and fresh sanitized user context
+      req.auth = verifiedPayload;
+      req.user = {
+        id: actualUserId,
+        name: user.name || "",
+        email: user.email || "",
+        role: currentRole,
+        image: user.image ?? null,
+      };
+
+      // STEP 06: Continue to downstream role guards or route controllers
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  };
+}
+
+export const verifyToken = createVerifyTokenMiddleware();

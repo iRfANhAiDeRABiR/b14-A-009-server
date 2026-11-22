@@ -118,6 +118,13 @@ export function errorHandler(err, req, res, _next) {
     }
   }
 
+  if (err?.omitErrorPayload) {
+    return res.status(normalized.statusCode).json({
+      success: false,
+      message: safeMessage,
+    });
+  }
+
   res.status(normalized.statusCode).json({
     success: false,
     message: safeMessage,

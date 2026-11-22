@@ -141,15 +141,60 @@ Configure the authorized redirect URI in Google Cloud Console as:
 
 ---
 
-## Development & Production Scripts
+## JWT Verification & Role-Based Access Control (Commit 04)
+
+Protected API routes verify Better Auth JWTs cryptographically using `jose` (`createRemoteJWKSet` + `jwtVerify`) against the Better Auth JWKS endpoint and resolve the user's **current** database role from MongoDB (`users`) on every request.
+
+- **Authorization Header:** Clients send `Authorization: Bearer <ACCESS_TOKEN>`.
+- **JWKS & Key Rotation:** `src/config/jwks.js` reuses a cached `createRemoteJWKSet()` resolver targeting `BETTER_AUTH_JWKS_URL` (default: `${BETTER_AUTH_URL}/api/auth/jwks`). Unknown or rotated `kid` keys trigger automatic keyset refresh; if JWKS is unavailable, verification fails closed (`503`) and never accepts unverified tokens.
+- **Claims & Algorithm Validation:** Validates cryptographic signature, `iss` (`BETTER_AUTH_ISSUER`), `aud` (`BETTER_AUTH_AUDIENCE`), `exp`, and required `sub`, permitting only asymmetric algorithms (`EdDSA`, `ES256`, `RS256`) and rejecting `alg=none` or `HS256`.
+- **Fresh Database User Lookup:** `verifyToken` queries MongoDB `users` (supporting both Better Auth `ObjectId` and string identifiers without assuming `_id` format) to verify account existence, reject disabled/suspended accounts, and read the latest `role` directly from MongoDB so stale JWTs cannot retain revoked privileges.
+
+### Middleware Execution Order & Exports
+
+1. `verifyToken` (`src/middleware/verifyToken.js`) — validates Bearer JWT + current MongoDB user and attaches `req.auth` and sanitized `req.user` (`{ id, name, email, role, image }`, zero password hashes).
+2. `verifyRenter` (`src/middleware/verifyRoles.js`) — authorizes canonical database role `Customer`.
+3. `verifyOwner` (`src/middleware/verifyRoles.js`) — authorizes canonical database role `Owner`.
+4. `verifyAdmin` (`src/middleware/verifyRoles.js`) — authorizes canonical database role `Admin`.
+
+```js
+// Protected route execution chain
+router.get("/owner-data", verifyToken, verifyOwner, controller);
+```
+
+### Protected Identity Endpoint
+
+- **`GET /api/protected/me`** (`verifyToken`): Returns HTTP `200` with `{ "success": true, "data": { "id", "name", "email", "role", "image" } }` for authenticated callers.
+
+### Standardized Auth Error Responses
+
+- **HTTP `401` Unauthorized:**
+  - Missing/empty token: `{ "success": false, "message": "Authentication required" }`
+  - Malformed/invalid/wrong-claim token: `{ "success": false, "message": "Invalid or expired access token" }`
+  - Expired token: `{ "success": false, "message": "Your session has expired. Please log in again." }`
+  - Deleted/missing DB user: `{ "success": false, "message": "Authenticated user not found" }`
+- **HTTP `403` Forbidden:**
+  - Missing/invalid DB role: `{ "success": false, "message": "Your account does not have a valid role" }`
+  - Role denied (`verifyRenter` / `verifyOwner` / `verifyAdmin`): `{ "success": false, "message": "Customer access required" }` (or `"Owner access required"` / `"Admin access required"`)
+
+### Resource Ownership Security Rules
+
+- Role authorization alone does not establish resource access. Controllers must verify actual database ownership against verified `req.user.id` (e.g., via `isResourceOwner(record.ownerId, req)`) and must never trust `req.body.userId`, `req.body.ownerId`, or `req.query.ownerId` for authorization.
+
+---
+
+## Development, Testing & Production Scripts
 
 ```bash
-# Development server (auto-reload with nodemon; requires valid MONGODB_URI & DB_NAME in .env)
+# Development server (auto-reload with nodemon; requires valid MONGODB_URI, DB_NAME & BETTER_AUTH_SECRET in .env)
 npm run dev
 
 # Production server start
 npm start
 
-# Static JavaScript syntax validation across src/
+# Run automated JWT & RBAC middleware tests (node:test)
+npm test
+
+# Static JavaScript syntax validation across src/ and tests/
 npm run check
 ```

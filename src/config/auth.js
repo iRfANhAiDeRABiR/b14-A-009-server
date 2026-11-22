@@ -162,8 +162,8 @@ export function buildBetterAuthOptions({
       plugins: [
         jwt({
           jwt: {
-            issuer: authEnv.baseUrl,
-            audience: authEnv.baseUrl,
+            issuer: authEnv.issuer,
+            audience: authEnv.audience,
             expirationTime: "15m",
             definePayload: ({ user }) => ({
               id: user.id,

@@ -10,6 +10,12 @@ const ALLOWED_USER_SORTS = new Set([
   "name_desc",
 ]);
 
+export const ADMIN_USER_ACCOUNT_STATUSES = Object.freeze([
+  "Active",
+  "Suspended",
+  "Banned",
+]);
+
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
@@ -81,10 +87,31 @@ export function validateAdminUserListQuery(query = {}) {
     max: MAX_LIMIT,
   });
 
+  let status = "all";
+  if (query.status !== undefined && query.status !== null && String(query.status).trim() !== "") {
+    const cleanStatus = String(query.status).trim();
+    if (cleanStatus.toLowerCase() === "all") {
+      status = "all";
+    } else {
+      const matched = ADMIN_USER_ACCOUNT_STATUSES.find(
+        (item) => item.toLowerCase() === cleanStatus.toLowerCase()
+      );
+      if (!matched) {
+        throw new ApiError(
+          `Invalid status filter. Allowed values: ${ADMIN_USER_ACCOUNT_STATUSES.join(", ")}, all.`,
+          400,
+          { code: "VALIDATION_ERROR" }
+        );
+      }
+      status = matched;
+    }
+  }
+
   return {
     search: searchRaw,
     escapedSearch: searchRaw ? escapeRegexInput(searchRaw) : "",
     role,
+    status,
     sort,
     page,
     limit,
@@ -138,4 +165,132 @@ export function validateAdminRoleUpdateBody(payload) {
   }
 
   return role;
+}
+
+/**
+ * Validates PATCH /api/admin/users/:id/status request body.
+ */
+export function validateAdminUserStatusBody(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new ApiError("Invalid request data", 400, { code: "VALIDATION_ERROR" });
+  }
+
+  const allowedKeys = new Set(["status", "reason"]);
+  const disallowed = Object.keys(payload).filter((k) => !allowedKeys.has(k));
+  if (disallowed.length > 0) {
+    throw new ApiError(
+      `Unsupported field(s) in status update payload: ${disallowed.join(", ")}.`,
+      400,
+      { code: "VALIDATION_ERROR" }
+    );
+  }
+
+  if (typeof payload.status !== "string" || !payload.status.trim()) {
+    throw new ApiError("Account status is required.", 400, {
+      code: "VALIDATION_ERROR",
+    });
+  }
+
+  const matched = ADMIN_USER_ACCOUNT_STATUSES.find(
+    (item) => item.toLowerCase() === payload.status.trim().toLowerCase()
+  );
+  if (!matched) {
+    throw new ApiError(
+      `Invalid status. Allowed values: ${ADMIN_USER_ACCOUNT_STATUSES.join(", ")}.`,
+      400,
+      { code: "VALIDATION_ERROR" }
+    );
+  }
+
+  let reason = "";
+  if (payload.reason !== undefined && payload.reason !== null) {
+    if (typeof payload.reason !== "string") {
+      throw new ApiError("Status reason must be a string.", 400, {
+        code: "VALIDATION_ERROR",
+      });
+    }
+    reason = cleanString(payload.reason);
+    if (reason.length > 300) {
+      throw new ApiError("Status reason cannot exceed 300 characters.", 400, {
+        code: "VALIDATION_ERROR",
+      });
+    }
+  }
+
+  return { status: matched, reason };
+}
+
+/**
+ * Validates PATCH /api/admin/users/:id safe profile metadata updates.
+ */
+export function validateAdminUserProfileUpdateBody(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new ApiError("Invalid request data", 400, { code: "VALIDATION_ERROR" });
+  }
+
+  const allowedKeys = new Set(["name", "phone", "address"]);
+  const keys = Object.keys(payload);
+  const disallowed = keys.filter((k) => !allowedKeys.has(k));
+  if (disallowed.length > 0) {
+    throw new ApiError(
+      `Disallowed field(s) for Admin profile edit: ${disallowed.join(", ")}.`,
+      400,
+      { code: "VALIDATION_ERROR" }
+    );
+  }
+
+  if (keys.length === 0) {
+    throw new ApiError("Provide at least one editable field (name, phone, address).", 400, {
+      code: "VALIDATION_ERROR",
+    });
+  }
+
+  const clean = {};
+
+  if (payload.name !== undefined) {
+    if (typeof payload.name !== "string") {
+      throw new ApiError("Name must be a valid string.", 400, {
+        code: "VALIDATION_ERROR",
+      });
+    }
+    const cleanName = cleanString(payload.name);
+    if (cleanName.length < 2 || cleanName.length > 80) {
+      throw new ApiError("Name must be between 2 and 80 characters.", 400, {
+        code: "VALIDATION_ERROR",
+      });
+    }
+    clean.name = cleanName;
+  }
+
+  if (payload.phone !== undefined) {
+    if (typeof payload.phone !== "string") {
+      throw new ApiError("Phone number must be a string.", 400, {
+        code: "VALIDATION_ERROR",
+      });
+    }
+    const cleanPhone = cleanString(payload.phone);
+    if (cleanPhone && (cleanPhone.length < 6 || cleanPhone.length > 25)) {
+      throw new ApiError("Phone number must be between 6 and 25 characters.", 400, {
+        code: "VALIDATION_ERROR",
+      });
+    }
+    clean.phone = cleanPhone;
+  }
+
+  if (payload.address !== undefined) {
+    if (typeof payload.address !== "string") {
+      throw new ApiError("Address must be a string.", 400, {
+        code: "VALIDATION_ERROR",
+      });
+    }
+    const cleanAddress = cleanString(payload.address);
+    if (cleanAddress.length > 240) {
+      throw new ApiError("Address cannot exceed 240 characters.", 400, {
+        code: "VALIDATION_ERROR",
+      });
+    }
+    clean.address = cleanAddress;
+  }
+
+  return clean;
 }

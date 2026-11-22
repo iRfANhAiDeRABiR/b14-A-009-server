@@ -37,6 +37,7 @@ export function createAdminEquipmentController(service = adminEquipmentService) 
       const result = await service.approveEquipment({
         equipmentId: req.params.id,
         adminId: req.user.id,
+        adminUser: req.user,
       });
 
       return sendSuccess(res, {
@@ -52,6 +53,7 @@ export function createAdminEquipmentController(service = adminEquipmentService) 
       const result = await service.rejectEquipment({
         equipmentId: req.params.id,
         adminId: req.user.id,
+        adminUser: req.user,
         payload: req.body,
       });
 
@@ -68,6 +70,7 @@ export function createAdminEquipmentController(service = adminEquipmentService) 
       const updated = await service.updateAdminEquipment({
         equipmentId: req.params.id,
         payload: req.body,
+        adminUser: req.user,
       });
 
       return sendSuccess(res, {
@@ -81,6 +84,7 @@ export function createAdminEquipmentController(service = adminEquipmentService) 
       const result = await service.deleteAdminEquipment({
         equipmentId: req.params.id,
         adminId: req.user.id,
+        adminUser: req.user,
       });
 
       return sendSuccess(res, {

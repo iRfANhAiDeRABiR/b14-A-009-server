@@ -7,6 +7,7 @@ import { getDB } from "../config/db.js";
  */
 export const COLLECTIONS = Object.freeze({
   USERS: "users",
+  SESSIONS: "sessions",
   EQUIPMENT: "equipment",
   BOOKINGS: "bookings",
   BOOKING_INTENTS: "bookingIntents",
@@ -14,10 +15,15 @@ export const COLLECTIONS = Object.freeze({
   PAYMENTS: "payments",
   CONTACT_MESSAGES: "contactMessages",
   STRIPE_WEBHOOK_EVENTS: "stripeWebhookEvents",
+  AUDIT_LOGS: "auditLogs",
 });
 
 export function getUsersCollection(db = getDB()) {
   return db.collection(COLLECTIONS.USERS);
+}
+
+export function getSessionsCollection(db = getDB()) {
+  return db.collection(COLLECTIONS.SESSIONS);
 }
 
 export function getEquipmentCollection(db = getDB()) {
@@ -46,4 +52,8 @@ export function getContactMessagesCollection(db = getDB()) {
 
 export function getStripeWebhookEventsCollection(db = getDB()) {
   return db.collection(COLLECTIONS.STRIPE_WEBHOOK_EVENTS);
+}
+
+export function getAuditLogsCollection(db = getDB()) {
+  return db.collection(COLLECTIONS.AUDIT_LOGS);
 }

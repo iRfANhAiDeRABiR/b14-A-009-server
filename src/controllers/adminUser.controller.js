@@ -28,6 +28,7 @@ export function createAdminUserController(service = adminUserService) {
         rawTargetUserId: req.params.id,
         body: req.body,
         adminUserId: req.user.id,
+        adminUser: req.user,
       });
 
       return sendSuccess(res, {
@@ -36,6 +37,47 @@ export function createAdminUserController(service = adminUserService) {
           ? `User already has the ${user.role} role`
           : "User role updated successfully",
         data: user,
+      });
+    }),
+
+    updateUserStatus: asyncHandler(async (req, res) => {
+      const user = await service.updateUserStatus({
+        rawTargetUserId: req.params.id,
+        body: req.body,
+        adminUser: req.user,
+      });
+
+      return sendSuccess(res, {
+        statusCode: 200,
+        message: `User account marked as ${user.accountStatus}`,
+        data: user,
+      });
+    }),
+
+    updateUserDetails: asyncHandler(async (req, res) => {
+      const user = await service.updateUserDetails({
+        rawTargetUserId: req.params.id,
+        body: req.body,
+        adminUser: req.user,
+      });
+
+      return sendSuccess(res, {
+        statusCode: 200,
+        message: "User profile updated successfully",
+        data: user,
+      });
+    }),
+
+    deleteUser: asyncHandler(async (req, res) => {
+      const result = await service.deleteUser({
+        rawTargetUserId: req.params.id,
+        adminUser: req.user,
+      });
+
+      return sendSuccess(res, {
+        statusCode: 200,
+        message: "User account removed successfully",
+        data: result,
       });
     }),
   };

@@ -7,9 +7,17 @@ import {
   createAdminAnalyticsRouter,
 } from "./adminAnalytics.routes.js";
 import {
+  adminAuditLogController,
+  createAdminAuditLogController,
+} from "../controllers/adminAuditLog.controller.js";
+import {
   adminEquipmentController,
   createAdminEquipmentController,
 } from "../controllers/adminEquipment.controller.js";
+import {
+  adminInquiryController,
+  createAdminInquiryController,
+} from "../controllers/adminInquiry.controller.js";
 import {
   adminRentalController,
   createAdminRentalController,
@@ -29,6 +37,8 @@ export function createAdminRouter({
   rentalController = adminRentalController,
   equipmentController = adminEquipmentController,
   analyticsController = adminAnalyticsController,
+  auditLogController = adminAuditLogController,
+  inquiryController = adminInquiryController,
 } = {}) {
   const router = Router();
 
@@ -39,6 +49,24 @@ export function createAdminRouter({
     authMiddleware,
     adminMiddleware,
     controller.updateUserRole
+  );
+  router.patch(
+    "/users/:id/status",
+    authMiddleware,
+    adminMiddleware,
+    controller.updateUserStatus
+  );
+  router.patch(
+    "/users/:id",
+    authMiddleware,
+    adminMiddleware,
+    controller.updateUserDetails
+  );
+  router.delete(
+    "/users/:id",
+    authMiddleware,
+    adminMiddleware,
+    controller.deleteUser
   );
 
   router.get(
@@ -52,6 +80,38 @@ export function createAdminRouter({
     authMiddleware,
     adminMiddleware,
     rentalController.getRentalDetails
+  );
+  router.patch(
+    "/rentals/:id/note",
+    authMiddleware,
+    adminMiddleware,
+    rentalController.updateRentalNote
+  );
+
+  router.get(
+    "/logs",
+    authMiddleware,
+    adminMiddleware,
+    auditLogController.listLogs
+  );
+
+  router.get(
+    "/inquiries",
+    authMiddleware,
+    adminMiddleware,
+    inquiryController.listInquiries
+  );
+  router.patch(
+    "/inquiries/:id/status",
+    authMiddleware,
+    adminMiddleware,
+    inquiryController.updateStatus
+  );
+  router.delete(
+    "/inquiries/:id",
+    authMiddleware,
+    adminMiddleware,
+    inquiryController.removeInquiry
   );
 
   router.use(
@@ -74,7 +134,11 @@ export function createAdminRouter({
   return router;
 }
 
-export { createAdminAnalyticsController };
+export {
+  createAdminAnalyticsController,
+  createAdminAuditLogController,
+  createAdminInquiryController,
+};
 
 export {
   createAdminEquipmentController,

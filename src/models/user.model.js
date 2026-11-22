@@ -22,6 +22,9 @@ export const SAFE_USER_PROJECTION = Object.freeze({
   disabled: 1,
   active: 1,
   status: 1,
+  suspensionReason: 1,
+  statusUpdatedAt: 1,
+  isDeleted: 1,
   createdAt: 1,
   updatedAt: 1,
 });
@@ -50,6 +53,7 @@ export function resolveUserIdentifier(userDoc) {
 }
 
 function resolveAccountStatus(userDoc) {
+  if (userDoc?.isDeleted === true) return "Deleted";
   if (userDoc?.banned === true) return "Banned";
   if (userDoc?.suspended === true) return "Suspended";
   if (userDoc?.disabled === true) return "Disabled";
@@ -57,7 +61,7 @@ function resolveAccountStatus(userDoc) {
   if (typeof userDoc?.status === "string" && userDoc.status.trim()) {
     return userDoc.status.trim();
   }
-  return undefined;
+  return "Active";
 }
 
 export { getUsersCollection };
@@ -93,7 +97,11 @@ export function sanitizeAdminUserProfile(userDoc) {
   const accountStatus = resolveAccountStatus(userDoc);
   return {
     ...base,
-    ...(accountStatus ? { accountStatus } : {}),
+    accountStatus,
+    ...(userDoc.suspensionReason
+      ? { suspensionReason: String(userDoc.suspensionReason) }
+      : {}),
+    ...(userDoc.statusUpdatedAt ? { statusUpdatedAt: userDoc.statusUpdatedAt } : {}),
   };
 }
 

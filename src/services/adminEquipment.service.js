@@ -27,6 +27,7 @@ import {
   normalizeUserIdentifier,
   toObjectId,
 } from "../validators/validationHelpers.js";
+import { recordAuditEventSafe } from "./auditLog.service.js";
 
 async function hydrateAdminOwnersMap(usersCollection, ownerIds = []) {
   const uniqueIds = [
@@ -84,6 +85,7 @@ export function createAdminEquipmentService({
   bookingsCollectionGetter = getBookingsCollection,
   paymentsCollectionGetter = getPaymentsCollection,
   favoritesCollectionGetter = getFavoritesCollection,
+  auditLogger = recordAuditEventSafe,
   nowProvider = () => new Date(),
 } = {}) {
   return {
@@ -197,7 +199,7 @@ export function createAdminEquipmentService({
       });
     },
 
-    async approveEquipment({ equipmentId, adminId }) {
+    async approveEquipment({ equipmentId, adminId, adminUser = null }) {
       const objectId = validateEquipmentObjectId(equipmentId);
       const normalizedAdminId = normalizeUserIdentifier(adminId, "adminId");
       const now = nowProvider();
@@ -261,6 +263,20 @@ export function createAdminEquipmentService({
         throw new ApiError("Equipment not found", 404, { code: "NOT_FOUND" });
       }
 
+      await auditLogger({
+        action: "EQUIPMENT_APPROVED",
+        category: "equipment",
+        severity: "info",
+        summary: `Approved equipment "${updatedDoc.name || updatedDoc.title || String(objectId)}"`,
+        actor: adminUser || { id: normalizedAdminId },
+        target: {
+          type: "equipment",
+          id: String(updatedDoc._id),
+          label: String(updatedDoc.name || updatedDoc.title || ""),
+        },
+        metadata: { previousStatus: existing.status, newStatus: EQUIPMENT_STATUSES.APPROVED },
+      });
+
       return {
         idempotent: false,
         item: sanitizeEquipmentRecord(updatedDoc, ownerDoc, {
@@ -270,7 +286,7 @@ export function createAdminEquipmentService({
       };
     },
 
-    async rejectEquipment({ equipmentId, adminId, payload }) {
+    async rejectEquipment({ equipmentId, adminId, adminUser = null, payload }) {
       const objectId = validateEquipmentObjectId(equipmentId);
       const normalizedAdminId = normalizeUserIdentifier(adminId, "adminId");
       const { rejectionReason } = validateAdminRejectPayload(payload);
@@ -338,6 +354,24 @@ export function createAdminEquipmentService({
         throw new ApiError("Equipment not found", 404, { code: "NOT_FOUND" });
       }
 
+      await auditLogger({
+        action: "EQUIPMENT_REJECTED",
+        category: "equipment",
+        severity: "warning",
+        summary: `Rejected equipment "${updatedDoc.name || updatedDoc.title || String(objectId)}" (${rejectionReason})`,
+        actor: adminUser || { id: normalizedAdminId },
+        target: {
+          type: "equipment",
+          id: String(updatedDoc._id),
+          label: String(updatedDoc.name || updatedDoc.title || ""),
+        },
+        metadata: {
+          previousStatus: existing.status,
+          newStatus: EQUIPMENT_STATUSES.REJECTED,
+          rejectionReason,
+        },
+      });
+
       return {
         idempotent: false,
         item: sanitizeEquipmentRecord(updatedDoc, ownerDoc, {
@@ -347,7 +381,7 @@ export function createAdminEquipmentService({
       };
     },
 
-    async updateAdminEquipment({ equipmentId, payload }) {
+    async updateAdminEquipment({ equipmentId, payload, adminUser = null }) {
       const objectId = validateEquipmentObjectId(equipmentId);
       // Reuses explicit 12-field allowlist blocking ownerId, status, reviewedBy, reviewedAt & history tampering
       const patchFields = validateEquipmentPatchPayload(payload);
@@ -388,13 +422,27 @@ export function createAdminEquipmentService({
         { projection: SAFE_ADMIN_EQUIPMENT_OWNER_PROJECTION }
       );
 
+      await auditLogger({
+        action: "EQUIPMENT_EDITED",
+        category: "equipment",
+        severity: "info",
+        summary: `Updated metadata on "${updatedDoc.name || updatedDoc.title || String(objectId)}"`,
+        actor: adminUser,
+        target: {
+          type: "equipment",
+          id: String(updatedDoc._id),
+          label: String(updatedDoc.name || updatedDoc.title || ""),
+        },
+        metadata: { updatedFields: Object.keys(patchFields) },
+      });
+
       return sanitizeEquipmentRecord(updatedDoc, ownerDoc, {
         includeAudit: true,
         includeOwnerEmail: true,
       });
     },
 
-    async deleteAdminEquipment({ equipmentId, adminId }) {
+    async deleteAdminEquipment({ equipmentId, adminId, adminUser = null }) {
       const objectId = validateEquipmentObjectId(equipmentId);
       const normalizedAdminId = normalizeUserIdentifier(adminId, "adminId");
       const now = nowProvider();
@@ -436,6 +484,19 @@ export function createAdminEquipmentService({
         );
         await favoritesCollection.deleteMany({ equipmentId: existing._id });
 
+        await auditLogger({
+          action: "EQUIPMENT_ARCHIVED",
+          category: "equipment",
+          severity: "warning",
+          summary: `Archived equipment "${existing.name || existing.title || String(existing._id)}" with historical bookings`,
+          actor: adminUser || { id: normalizedAdminId },
+          target: {
+            type: "equipment",
+            id: String(existing._id),
+            label: String(existing.name || existing.title || ""),
+          },
+        });
+
         return {
           deleted: false,
           archived: true,
@@ -447,6 +508,19 @@ export function createAdminEquipmentService({
 
       await equipmentCollection.deleteOne({ _id: existing._id });
       await favoritesCollection.deleteMany({ equipmentId: existing._id });
+
+      await auditLogger({
+        action: "EQUIPMENT_DELETED",
+        category: "equipment",
+        severity: "danger",
+        summary: `Deleted equipment "${existing.name || existing.title || String(existing._id)}"`,
+        actor: adminUser || { id: normalizedAdminId },
+        target: {
+          type: "equipment",
+          id: String(existing._id),
+          label: String(existing.name || existing.title || ""),
+        },
+      });
 
       return {
         deleted: true,

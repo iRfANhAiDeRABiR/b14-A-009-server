@@ -2,6 +2,7 @@ import { BOOKING_STATUSES } from "../constants/booking.js";
 import { EQUIPMENT_STATUSES } from "../constants/equipment.js";
 import { DEFAULT_CURRENCY, roundCurrency } from "../constants/payment.js";
 import {
+  getAuditLogsCollection,
   getBookingsCollection,
   getEquipmentCollection,
   getPaymentsCollection,
@@ -26,8 +27,26 @@ const CANONICAL_APPROVAL_STATUSES = Object.freeze([
   EQUIPMENT_STATUSES.REJECTED,
 ]);
 
-function normalizeRecentActivityItems({ bookings = [], equipment = [], payments = [] }) {
+function normalizeRecentActivityItems({
+  bookings = [],
+  equipment = [],
+  payments = [],
+  auditLogs = [],
+}) {
   const events = [];
+
+  for (const log of auditLogs) {
+    if (!log?._id) continue;
+    events.push({
+      _id: String(log._id),
+      type: log.category || "system",
+      activityType: String(log.action || "Admin Event"),
+      title: String(log.summary || log.target?.label || log.action || "Event"),
+      reference: String(log.target?.id || log._id),
+      status: String(log.severity || "info"),
+      createdAt: log.createdAt || null,
+    });
+  }
 
   for (const booking of bookings) {
     if (!booking?._id) continue;
@@ -87,8 +106,34 @@ export function createAdminAnalyticsService({
   equipmentCollectionGetter = getEquipmentCollection,
   bookingsCollectionGetter = getBookingsCollection,
   paymentsCollectionGetter = getPaymentsCollection,
+  auditLogsCollectionGetter = getAuditLogsCollection,
   nowProvider = () => new Date(),
 } = {}) {
+  async function fetchRecentAuditLogsSafely() {
+    try {
+      const col = await auditLogsCollectionGetter();
+      return await col
+        .find(
+          {},
+          {
+            projection: {
+              _id: 1,
+              action: 1,
+              category: 1,
+              severity: 1,
+              summary: 1,
+              target: 1,
+              createdAt: 1,
+            },
+          }
+        )
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(RECENT_ACTIVITY_SOURCE_LIMIT)
+        .toArray();
+    } catch {
+      return [];
+    }
+  }
   return {
     async getAdminAnalytics(rawQuery = {}) {
       const { period, monthsCount } = validateAnalyticsQuery(rawQuery);
@@ -117,6 +162,7 @@ export function createAdminAnalyticsService({
         recentBookings,
         recentEquipment,
         recentPayments,
+        recentAuditLogs,
       ] = await Promise.all([
         usersCollection.countDocuments({ isDeleted: { $ne: true } }),
         equipmentCollection
@@ -281,6 +327,7 @@ export function createAdminAnalyticsService({
           .sort({ createdAt: -1, _id: -1 })
           .limit(RECENT_ACTIVITY_SOURCE_LIMIT)
           .toArray(),
+        fetchRecentAuditLogsSafely(),
       ]);
 
       const approvalMap = new Map();
@@ -368,6 +415,7 @@ export function createAdminAnalyticsService({
           bookings: recentBookings,
           equipment: recentEquipment,
           payments: recentPayments,
+          auditLogs: recentAuditLogs,
         }),
       };
     },

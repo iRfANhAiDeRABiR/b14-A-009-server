@@ -31,6 +31,20 @@ export function createAdminRentalController(service = adminRentalService) {
         data: item,
       });
     }),
+
+    updateRentalNote: asyncHandler(async (req, res) => {
+      const updated = await service.updateAdminRentalNote({
+        rentalId: req.params.id,
+        body: req.body,
+        adminUser: req.user,
+      });
+
+      return sendSuccess(res, {
+        statusCode: 200,
+        message: "Rental governance note updated successfully",
+        data: updated,
+      });
+    }),
   };
 }
 

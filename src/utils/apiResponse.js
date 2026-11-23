@@ -3,7 +3,13 @@
  */
 export function sendSuccess(
   res,
-  { statusCode = 200, message = "Operation completed successfully", data = null, pagination = null } = {}
+  {
+    statusCode = 200,
+    message = "Operation completed successfully",
+    data = null,
+    pagination = null,
+    summary = null,
+  } = {}
 ) {
   const body = {
     success: true,
@@ -13,6 +19,10 @@ export function sendSuccess(
 
   if (pagination) {
     body.pagination = pagination;
+  }
+
+  if (summary) {
+    body.summary = summary;
   }
 
   return res.status(statusCode).json(body);

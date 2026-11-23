@@ -26,6 +26,10 @@ import {
   adminUserController,
   createAdminUserController,
 } from "../controllers/adminUser.controller.js";
+import {
+  adminPaymentController,
+  createAdminPaymentController,
+} from "../controllers/adminPayment.controller.js";
 import { createAdminEquipmentRouter } from "./adminEquipment.routes.js";
 import { verifyAdmin } from "../middleware/verifyRoles.js";
 import { verifyToken } from "../middleware/verifyToken.js";
@@ -39,6 +43,7 @@ export function createAdminRouter({
   analyticsController = adminAnalyticsController,
   auditLogController = adminAuditLogController,
   inquiryController = adminInquiryController,
+  paymentController = adminPaymentController,
 } = {}) {
   const router = Router();
 
@@ -86,6 +91,13 @@ export function createAdminRouter({
     authMiddleware,
     adminMiddleware,
     rentalController.updateRentalNote
+  );
+
+  router.get(
+    "/payments",
+    authMiddleware,
+    adminMiddleware,
+    paymentController.listPayments
   );
 
   router.get(
@@ -138,6 +150,7 @@ export {
   createAdminAnalyticsController,
   createAdminAuditLogController,
   createAdminInquiryController,
+  createAdminPaymentController,
 };
 
 export {

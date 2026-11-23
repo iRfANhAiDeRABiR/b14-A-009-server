@@ -204,6 +204,7 @@ Suspending or deleting a user revokes active sessions and blocks token verificat
 | `PATCH` | `/api/admin/users/:id` | Admin | Edit user name, phone, or address metadata |
 | `DELETE` | `/api/admin/users/:id` | Admin | Archive/remove user and revoke active sessions |
 | `GET` | `/api/admin/equipment` / `/:id` | Admin | Full inventory table & detailed approval audit history |
+| `GET` | `/api/admin/payments` | Admin | Platform payment history with customer/owner/equipment hydration, filters, & summary |
 | `PATCH` | `/api/admin/equipment/:id/approve` | Admin | Approve pending/rejected listing (`auditLogs` recorded) |
 | `PATCH` | `/api/admin/equipment/:id/reject` | Admin | Reject listing with moderation reason |
 | `PATCH` | `/api/admin/equipment/:id` | Admin | Update listing metadata cleanly |
